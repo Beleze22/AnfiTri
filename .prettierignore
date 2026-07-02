@@ -1,0 +1,7 @@
+.next
+node_modules
+package-lock.json
+
+# documentos de especificação — não reformatar, conteúdo do usuário
+escopo/
+AGENTS.md

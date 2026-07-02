@@ -1,0 +1,46 @@
+@import "tailwindcss";
+
+/*
+ * Design tokens — escopo/design-ui-ux.md, seção 2.
+ * Toda cor/raio/tamanho usado nas telas deve referenciar um destes tokens
+ * (via utilitário Tailwind gerado, ex: bg-accent, rounded-card), nunca um
+ * valor literal direto no componente.
+ */
+@theme {
+  /* Cores — seção 2.1 */
+  --color-bg: #fafafa;
+  --color-surface: #ffffff;
+  --color-border: #e5e3de;
+  --color-text-primary: #272727;
+  --color-text-secondary: #6b6862;
+  --color-accent: #f86363;
+  --color-accent-light: #fde8e8;
+  --color-accent-dark: #d75656;
+  --color-accent-text: #ffffff;
+
+  /* Cores de status — seção 2.1 */
+  --color-green: #3a9d6f;
+  --color-green-light: #e5f3ed;
+  --color-amber: #e0a030;
+  --color-amber-light: #fbf1de;
+  --color-blue: #4f7cac;
+  --color-blue-light: #e6edf5;
+
+  /* Formato e espaçamento — seção 2.2 */
+  --radius-card: 14px;
+  --radius-pill: 999px;
+
+  /* Tipografia — seção 2.3 (família única, hierarquia por peso/tamanho) */
+  --font-sans:
+    -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, Helvetica, Arial,
+    sans-serif;
+  --text-page-title: 20px;
+  --text-card-title: 15px;
+  --text-body: 14px;
+  --text-caption: 12px;
+}
+
+body {
+  background-color: var(--color-bg);
+  color: var(--color-text-primary);
+}

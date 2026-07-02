@@ -1,0 +1,201 @@
+generator client {
+  provider = "prisma-client-js"
+}
+
+datasource db {
+  provider = "postgresql"
+}
+
+enum PropertyStatus {
+  rascunho
+  publicada
+  pausada
+}
+
+enum BookingSource {
+  airbnb
+  manual
+  site
+}
+
+enum BookingStatus {
+  pendente
+  confirmado
+  cancelado
+  expirado
+}
+
+enum UserRole {
+  gestor
+  hospede
+}
+
+enum ConversationStatus {
+  aberta
+  encerrada
+}
+
+// Configurações globais do sistema — chave/valor em JSON. Usado para
+// categorias dinâmicas de hospedagem (gerenciadas pelo gestor em
+// Configurações) em vez de um enum fixo no schema.
+model SystemConfig {
+  id    String @id @default(cuid())
+  key   String @unique
+  value String @db.Text
+
+  @@map("system_config")
+}
+
+// arquitetura-e-escopo.md, seção 4.1.
+// "location" foi adicionado pela seção 4.2 do doc de design ("Título,
+// localização, capacidade"), que a seção 4.1 da arquitetura não previu.
+// category mudou de enum fixo para String dinâmica gerenciada pelo gestor.
+model Property {
+  id             String         @id @default(cuid())
+  title          String
+  slug           String         @unique
+  description    String         @db.Text
+  location       String         @default("São Paulo, SP")
+  category       String         @default("urbano")
+  maxGuests      Int            @map("max_guests")
+  bedrooms       Int
+  basePrice      Decimal        @map("base_price") @db.Decimal(10, 2)
+  airbnbIcalUrl  String?        @map("airbnb_ical_url")
+  airbnbSyncedAt DateTime?      @map("airbnb_synced_at")
+  status         PropertyStatus @default(rascunho)
+
+  photos     Photo[]
+  bookings   Booking[]
+  priceRules PriceRule[]
+  amenities  Amenity[]
+
+  @@map("properties")
+}
+
+model Photo {
+  id         String   @id @default(cuid())
+  propertyId String   @map("property_id")
+  property   Property @relation(fields: [propertyId], references: [id])
+  url        String
+  order      Int
+  isCover    Boolean  @default(false) @map("is_cover")
+
+  @@map("photos")
+}
+
+// Entidade central — arquitetura-e-escopo.md, seções 4.1 e 6.3.
+// created_at não estava listado na seção 4.1, mas a seção 6.2 calcula
+// expires_at a partir dele — adicionado por necessidade direta da regra já
+// definida, não como campo novo de produto.
+model Booking {
+  id         String        @id @default(cuid())
+  propertyId String        @map("property_id")
+  property   Property      @relation(fields: [propertyId], references: [id])
+  userId     String        @map("user_id")
+  user       User          @relation(fields: [userId], references: [id])
+  checkIn    DateTime      @map("check_in") @db.Date
+  checkOut   DateTime      @map("check_out") @db.Date
+  source     BookingSource
+  status     BookingStatus
+  airbnbRef  String?       @unique @map("airbnb_ref")
+  expiresAt  DateTime?     @map("expires_at")
+  totalPrice Decimal?      @map("total_price") @db.Decimal(10, 2)
+  createdAt  DateTime      @default(now()) @map("created_at")
+
+  conversation Conversation?
+
+  @@map("bookings")
+}
+
+// rule_type fica como texto livre (não enum) para o gestor poder criar
+// categorias novas na tela de Regras de Preço sem precisar de uma migration.
+// "name" foi adicionado pela coluna "nome" exigida em design-ui-ux.md, 4.9,
+// que a seção 4.1 da arquitetura não listou.
+// daysOfWeek (0=domingo...6=sábado) permite regras recorrentes (ex: "fim de
+// semana" = toda sexta/sábado dentro da vigência) — vazio significa que a
+// regra cobre todos os dias do intervalo, como um bloco fixo (ex: "Carnaval").
+model PriceRule {
+  id         String   @id @default(cuid())
+  propertyId String   @map("property_id")
+  property   Property @relation(fields: [propertyId], references: [id])
+  name       String
+  ruleType   String   @map("rule_type")
+  startDate  DateTime @map("start_date") @db.Date
+  endDate    DateTime @map("end_date") @db.Date
+  daysOfWeek Int[]    @default([]) @map("days_of_week")
+  multiplier Decimal  @db.Decimal(4, 2)
+
+  @@map("price_rules")
+}
+
+model Amenity {
+  id         String   @id @default(cuid())
+  propertyId String   @map("property_id")
+  property   Property @relation(fields: [propertyId], references: [id])
+  name       String
+  icon       String
+
+  @@map("amenities")
+}
+
+// Campos de configuração de expiração (seção 6.2) só se aplicam a role=gestor
+// — ficam nulos para hóspedes, já que User serve os dois papéis (seção 4.1).
+model User {
+  id           String   @id @default(cuid())
+  name         String
+  email        String   @unique
+  phone        String?
+  passwordHash String?  @map("password_hash")
+  role         UserRole
+
+  defaultExpiryHours Int?      @map("default_expiry_hours")
+  quietHoursStart    DateTime? @map("quiet_hours_start") @db.Time
+  quietHoursEnd      DateTime? @map("quiet_hours_end") @db.Time
+  gracePeriodHours   Int?      @map("grace_period_hours")
+
+  bookings        Booking[]
+  messages        Message[]
+  magicLinkTokens MagicLinkToken[]
+
+  @@map("users")
+}
+
+// Suporte ao login sem senha do hóspede (magic link por e-mail, seção 3.4 da
+// arquitetura) — token de uso único, curto prazo. Não fazia parte da seção 4
+// porque o mecanismo exato ficou como pendência até esta etapa.
+model MagicLinkToken {
+  id        String    @id @default(cuid())
+  userId    String    @map("user_id")
+  user      User      @relation(fields: [userId], references: [id])
+  tokenHash String    @unique @map("token_hash")
+  expiresAt DateTime  @map("expires_at")
+  usedAt    DateTime? @map("used_at")
+  createdAt DateTime  @default(now()) @map("created_at")
+
+  @@map("magic_link_tokens")
+}
+
+// bookingId único garante o máximo de 1 Conversation por Booking (seção 4.2).
+model Conversation {
+  id        String             @id @default(cuid())
+  bookingId String             @unique @map("booking_id")
+  booking   Booking            @relation(fields: [bookingId], references: [id])
+  status    ConversationStatus @default(aberta)
+
+  messages Message[]
+
+  @@map("conversations")
+}
+
+model Message {
+  id             String       @id @default(cuid())
+  conversationId String       @map("conversation_id")
+  conversation   Conversation @relation(fields: [conversationId], references: [id])
+  senderId       String       @map("sender_id")
+  sender         User         @relation(fields: [senderId], references: [id])
+  content        String       @db.Text
+  createdAt      DateTime     @default(now()) @map("created_at")
+  read           Boolean      @default(false)
+
+  @@map("messages")
+}
