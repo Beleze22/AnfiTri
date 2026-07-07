@@ -2,7 +2,7 @@ import { NextResponse } from "next/server";
 import { z } from "zod";
 
 import { prisma } from "@/lib/db/client";
-import { apiError, requireSession } from "@/lib/server/http";
+import { apiError, readJson, requireSession } from "@/lib/server/http";
 
 export async function GET() {
   const session = await requireSession();
@@ -30,7 +30,7 @@ export async function PATCH(request: Request) {
   if (!session) {
     return apiError("unauthorized", "Não autorizado.", 401);
   }
-  const parsed = updateInput.safeParse(await request.json());
+  const parsed = updateInput.safeParse(await readJson(request));
   if (!parsed.success) {
     return apiError("invalid_input", "Dados inválidos.", 400);
   }

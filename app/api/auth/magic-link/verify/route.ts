@@ -4,6 +4,7 @@ import { NextResponse } from "next/server";
 import { prisma } from "@/lib/db/client";
 import {
   GUEST_SESSION_DURATION,
+  GUEST_SESSION_MAX_AGE_SECONDS,
   SESSION_COOKIE,
   signSession,
 } from "@/lib/server/auth/jwt";
@@ -35,7 +36,7 @@ export async function GET(request: Request) {
     secure: process.env.NODE_ENV === "production",
     sameSite: "lax",
     path: "/",
-    maxAge: 60 * 60 * 24 * 60,
+    maxAge: GUEST_SESSION_MAX_AGE_SECONDS,
   });
 
   return NextResponse.redirect(new URL("/?login=ok", request.url));

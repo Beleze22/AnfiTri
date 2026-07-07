@@ -17,3 +17,13 @@ export async function requireSession(role?: Role) {
   }
   return session;
 }
+
+// Corpo JSON malformado não é exceção de servidor — retorna null para o
+// handler responder 400 em vez de estourar 500.
+export async function readJson(request: Request): Promise<unknown> {
+  try {
+    return await request.json();
+  } catch {
+    return null;
+  }
+}

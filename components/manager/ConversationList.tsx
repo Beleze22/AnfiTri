@@ -10,11 +10,23 @@ const dateFormatter = new Intl.DateTimeFormat("pt-BR", {
 
 // Lista de conversas do inbox (design-ui-ux.md, seção 4.8) — toda conversa
 // mostra a hospedagem+datas do booking associado, nunca solta.
-export async function ConversationList({ activeId }: { activeId?: string }) {
+// No mobile o master-detail vira duas telas: a lista ocupa a largura toda no
+// inbox e some quando uma conversa está aberta (hideOnMobile).
+export async function ConversationList({
+  activeId,
+  hideOnMobile = false,
+}: {
+  activeId?: string;
+  hideOnMobile?: boolean;
+}) {
   const conversations = await listConversationsForManager();
 
   return (
-    <div className="w-[320px] shrink-0 overflow-y-auto border-r border-border">
+    <div
+      className={`w-full shrink-0 overflow-y-auto border-border md:block md:w-80 md:border-r ${
+        hideOnMobile ? "hidden" : ""
+      }`}
+    >
       {conversations.length === 0 && (
         <p className="p-4 text-body text-text-secondary">
           Nenhuma conversa ainda.

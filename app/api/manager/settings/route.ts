@@ -2,7 +2,7 @@ import { NextResponse } from "next/server";
 import { z } from "zod";
 
 import { prisma } from "@/lib/db/client";
-import { apiError, requireSession } from "@/lib/server/http";
+import { apiError, readJson, requireSession } from "@/lib/server/http";
 
 function timeToHHMM(date: Date) {
   return date.toISOString().slice(11, 16);
@@ -47,7 +47,7 @@ export async function PATCH(request: Request) {
     return apiError("unauthorized", "Não autorizado.", 401);
   }
 
-  const parsed = settingsInput.safeParse(await request.json());
+  const parsed = settingsInput.safeParse(await readJson(request));
   if (!parsed.success) {
     return apiError("invalid_input", "Dados inválidos.", 400);
   }

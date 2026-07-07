@@ -2,7 +2,7 @@ import { NextResponse } from "next/server";
 import { z } from "zod";
 
 import { prisma } from "@/lib/db/client";
-import { apiError, requireSession } from "@/lib/server/http";
+import { apiError, readJson, requireSession } from "@/lib/server/http";
 
 const priceRuleInput = z.object({
   name: z.string().min(1),
@@ -36,7 +36,7 @@ export async function POST(request: Request, { params }: RouteContext) {
   }
 
   const { id } = await params;
-  const parsed = priceRuleInput.safeParse(await request.json());
+  const parsed = priceRuleInput.safeParse(await readJson(request));
   if (!parsed.success) {
     return apiError("invalid_input", "Dados inválidos.", 400);
   }

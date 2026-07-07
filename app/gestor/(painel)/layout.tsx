@@ -19,9 +19,10 @@ export default async function PainelLayout({
   });
 
   return (
-    <div className="flex">
+    // Mobile: bloco (topbar em cima, conteúdo embaixo). md+: sidebar ao lado.
+    <div className="md:flex">
       <Sidebar managerName={manager.name} />
-      <main className="flex-1 bg-bg">{children}</main>
+      <main className="min-h-screen flex-1 bg-bg">{children}</main>
     </div>
   );
 }

@@ -1,13 +1,12 @@
-
 import { prisma } from "@/lib/db/client";
-import { isAvailable } from "@/lib/server/booking/service";
-import { calculatePriceForStay } from "@/lib/server/pricing/calculate";
+import { calculateNightPrices } from "@/lib/server/pricing/calculate";
 
 export function getPropertyBySlug(slug: string) {
   return prisma.property.findFirst({
     where: { slug, status: "publicada" },
     include: {
-      photos: { orderBy: { order: "asc" } },
+      // Capa primeiro: é a foto de abertura do carrossel na página pública.
+      photos: { orderBy: [{ isCover: "desc" }, { order: "asc" }] },
       amenities: true,
     },
   });
@@ -28,7 +27,11 @@ export function getPropertyById(id: string) {
 export function listAllPropertiesForManager() {
   return prisma.property.findMany({
     orderBy: { title: "asc" },
-    include: { photos: { orderBy: { order: "asc" }, take: 1 } },
+    include: {
+      // A thumb do card é a foto de capa; sem capa marcada, a primeira na
+      // ordem definida pelo gestor.
+      photos: { orderBy: [{ isCover: "desc" }, { order: "asc" }], take: 1 },
+    },
   });
 }
 
@@ -46,7 +49,10 @@ export async function listPublishedProperties(params: {
       status: "publicada",
       ...(params.category ? { category: params.category } : {}),
     },
-    include: { photos: { orderBy: { order: "asc" }, take: 1 } },
+    include: {
+      // Card da vitrine mostra a foto de capa, como a lista do gestor.
+      photos: { orderBy: [{ isCover: "desc" }, { order: "asc" }], take: 1 },
+    },
     orderBy: { title: "asc" },
   });
 
@@ -57,22 +63,49 @@ export async function listPublishedProperties(params: {
   const checkIn = params.checkIn;
   const checkOut = params.checkOut;
 
-  const available: ((typeof properties)[number] & { totalPrice: string })[] =
-    [];
-  const unavailable: typeof properties = [];
+  // Duas queries em lote (conflitos + regras) em vez de duas por propriedade —
+  // a vitrine é a página mais acessada e crescia linearmente em round-trips.
+  const conflicts = await prisma.booking.findMany({
+    where: {
+      propertyId: { in: properties.map((property) => property.id) },
+      status: { in: ["pendente", "confirmado"] },
+      checkIn: { lt: checkOut },
+      checkOut: { gt: checkIn },
+    },
+    select: { propertyId: true },
+  });
+  const unavailableIds = new Set(conflicts.map((c) => c.propertyId));
 
-  for (const property of properties) {
-    if (await isAvailable(property.id, checkIn, checkOut)) {
-      const { total } = await calculatePriceForStay(
-        property.id,
-        checkIn,
-        checkOut,
-      );
-      available.push({ ...property, totalPrice: total.toFixed(2) });
-    } else {
-      unavailable.push(property);
-    }
+  const availableProperties = properties.filter(
+    (property) => !unavailableIds.has(property.id),
+  );
+  const unavailable = properties.filter((property) =>
+    unavailableIds.has(property.id),
+  );
+
+  const rules = await prisma.priceRule.findMany({
+    where: {
+      propertyId: { in: availableProperties.map((property) => property.id) },
+      startDate: { lte: checkOut },
+      endDate: { gte: checkIn },
+    },
+  });
+  const rulesByProperty = new Map<string, typeof rules>();
+  for (const rule of rules) {
+    const group = rulesByProperty.get(rule.propertyId) ?? [];
+    group.push(rule);
+    rulesByProperty.set(rule.propertyId, group);
   }
+
+  const available = availableProperties.map((property) => {
+    const { total } = calculateNightPrices(
+      property.basePrice,
+      rulesByProperty.get(property.id) ?? [],
+      checkIn,
+      checkOut,
+    );
+    return { ...property, totalPrice: total.toFixed(2) };
+  });
 
   return { withDates: true as const, available, unavailable };
 }

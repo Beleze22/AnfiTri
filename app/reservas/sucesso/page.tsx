@@ -12,15 +12,17 @@ export default async function SucessoPage({
   searchParams: Promise<{ bookingId?: string }>;
 }) {
   const { bookingId } = await searchParams;
-  const session = await getSession();
-  if (!bookingId || !session) {
+  if (!bookingId) {
     notFound();
   }
 
-  const booking = await getBookingById(bookingId);
-  if (!booking || booking.userId !== session.sub) {
-    notFound();
-  }
+  // Reserva feita com e-mail já cadastrado não emite sessão (a posse do
+  // e-mail ainda não foi provada) — nesse caso a página mostra a versão
+  // genérica, sem detalhes da reserva, e orienta a entrar pelo link enviado.
+  const session = await getSession();
+  const booking = session ? await getBookingById(bookingId) : null;
+  const ownBooking =
+    booking && session && booking.userId === session.sub ? booking : null;
 
   const formatter = new Intl.DateTimeFormat("pt-BR", {
     day: "2-digit",
@@ -36,30 +38,41 @@ export default async function SucessoPage({
         Pedido enviado!
       </h1>
 
-      <div className="mt-6 w-full max-w-sm rounded-card border border-border bg-surface p-4 text-left">
-        <p className="text-card-title font-semibold text-text-primary">
-          {booking.property.title}
-        </p>
-        <div className="mt-2">
-          <StatusBadge status="pendente" label="Pendente de confirmação" />
-        </div>
-        {booking.expiresAt && (
-          <p className="mt-2 text-caption text-text-secondary">
-            Prazo de confirmação: {formatter.format(booking.expiresAt)}
+      {ownBooking ? (
+        <div className="mt-6 w-full max-w-sm rounded-card border border-border bg-surface p-4 text-left">
+          <p className="text-card-title font-semibold text-text-primary">
+            {ownBooking.property.title}
           </p>
-        )}
-      </div>
+          <div className="mt-2">
+            <StatusBadge status="pendente" label="Pendente de confirmação" />
+          </div>
+          {ownBooking.expiresAt && (
+            <p className="mt-2 text-caption text-text-secondary">
+              Prazo de confirmação: {formatter.format(ownBooking.expiresAt)}
+            </p>
+          )}
+        </div>
+      ) : (
+        <div className="mt-6 w-full max-w-sm rounded-card border border-border bg-surface p-4 text-left">
+          <p className="text-body text-text-primary">
+            Esse e-mail já tem cadastro por aqui. Enviamos um link de acesso
+            para ele — entre por lá para acompanhar a reserva.
+          </p>
+        </div>
+      )}
 
       <p className="mt-4 max-w-sm text-caption text-text-secondary">
         Acompanhe a resposta do gestor pela aba Mensagens.
       </p>
 
-      <Link
-        href="/perfil"
-        className="mt-6 w-full max-w-sm rounded-pill bg-accent px-4 py-3 text-body font-medium text-accent-text"
-      >
-        Ver minhas reservas
-      </Link>
+      {ownBooking ? (
+        <Link
+          href="/perfil"
+          className="mt-6 w-full max-w-sm rounded-pill bg-accent px-4 py-3 text-body font-medium text-accent-text"
+        >
+          Ver minhas reservas
+        </Link>
+      ) : null}
       <Link href="/" className="mt-3 text-body text-text-secondary underline">
         Voltar ao início
       </Link>

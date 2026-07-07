@@ -6,7 +6,7 @@ import {
   listMessages,
   sendMessage,
 } from "@/lib/server/messages/service";
-import { apiError, requireSession } from "@/lib/server/http";
+import { apiError, readJson, requireSession } from "@/lib/server/http";
 
 type RouteContext = { params: Promise<{ id: string }> };
 
@@ -40,7 +40,7 @@ export async function POST(request: Request, { params }: RouteContext) {
     return apiError("not_found", "Conversa não encontrada.", 404);
   }
 
-  const parsed = sendMessageInput.safeParse(await request.json());
+  const parsed = sendMessageInput.safeParse(await readJson(request));
   if (!parsed.success) {
     return apiError("invalid_input", "Mensagem vazia.", 400);
   }

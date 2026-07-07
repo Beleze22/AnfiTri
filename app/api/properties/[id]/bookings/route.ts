@@ -7,12 +7,17 @@ import {
   createSiteBooking,
   listBookingsForProperty,
 } from "@/lib/server/booking/service";
+import { sendMagicLinkEmail } from "@/lib/server/auth/email";
+import { createMagicLinkToken } from "@/lib/server/auth/magic-link";
 import {
   GUEST_SESSION_DURATION,
+  GUEST_SESSION_MAX_AGE_SECONDS,
   SESSION_COOKIE,
   signSession,
 } from "@/lib/server/auth/jwt";
-import { apiError, requireSession } from "@/lib/server/http";
+import { getSession } from "@/lib/server/auth/session";
+import { apiError, readJson, requireSession } from "@/lib/server/http";
+import { checkRateLimit, getClientIp } from "@/lib/server/rate-limit";
 
 const createBookingInput = z.object({
   name: z.string().min(1),
@@ -35,35 +40,67 @@ export async function GET(_request: Request, { params }: RouteContext) {
   return NextResponse.json(bookings);
 }
 
-// Cria a reserva pendente do fluxo público (seção 6.1) e já autentica o
-// hóspede na hora (sessão por magic link só é necessária em visitas
-// futuras — ver discussão da Etapa 3).
+// Cria a reserva pendente do fluxo público (seção 6.1). Só autentica na hora
+// quando o e-mail é novo (a conta acabou de nascer, não há nada a proteger);
+// para e-mail já cadastrado a posse precisa ser provada via magic link —
+// emitir sessão direto permitiria assumir a conta de qualquer hóspede só
+// conhecendo o e-mail dele.
 export async function POST(request: Request, { params }: RouteContext) {
   const { id } = await params;
-  const parsed = createBookingInput.safeParse(await request.json());
+  const parsed = createBookingInput.safeParse(await readJson(request));
   if (!parsed.success || parsed.data.checkIn >= parsed.data.checkOut) {
     return apiError("invalid_input", "Dados inválidos.", 400);
   }
 
+  // Cada pendente bloqueia a data por horas — sem limite, reservas falsas
+  // em série viram DoS de calendário.
+  const allowed = await checkRateLimit(
+    "booking",
+    getClientIp(request),
+    5,
+    60 * 60,
+  );
+  if (!allowed) {
+    return apiError(
+      "too_many_requests",
+      "Muitas solicitações de reserva. Tente novamente mais tarde.",
+      429,
+    );
+  }
+
   try {
-    const { booking, guest } = await createSiteBooking({
+    const { booking, guest, isNewUser } = await createSiteBooking({
       propertyId: id,
       ...parsed.data,
     });
 
-    const session = await signSession(
-      { sub: guest.id, role: "hospede" },
-      GUEST_SESSION_DURATION,
-    );
-    (await cookies()).set(SESSION_COOKIE, session, {
-      httpOnly: true,
-      secure: process.env.NODE_ENV === "production",
-      sameSite: "lax",
-      path: "/",
-      maxAge: 60 * 60 * 24 * 60,
-    });
+    // Hóspede que já está logado como o dono do e-mail não precisa de nada.
+    const currentSession = await getSession();
+    const alreadyAuthenticated = currentSession?.sub === guest.id;
 
-    return NextResponse.json(booking, { status: 201 });
+    if (isNewUser) {
+      const session = await signSession(
+        { sub: guest.id, role: "hospede" },
+        GUEST_SESSION_DURATION,
+      );
+      (await cookies()).set(SESSION_COOKIE, session, {
+        httpOnly: true,
+        secure: process.env.NODE_ENV === "production",
+        sameSite: "lax",
+        path: "/",
+        maxAge: GUEST_SESSION_MAX_AGE_SECONDS,
+      });
+    } else if (!alreadyAuthenticated) {
+      const token = await createMagicLinkToken(guest.id);
+      const verifyUrl = new URL("/api/auth/magic-link/verify", request.url);
+      verifyUrl.searchParams.set("token", token);
+      await sendMagicLinkEmail(guest.email, verifyUrl.toString());
+    }
+
+    return NextResponse.json(
+      { ...booking, authenticated: isNewUser || alreadyAuthenticated },
+      { status: 201 },
+    );
   } catch (error) {
     if (error instanceof BookingConflictError) {
       return apiError("booking_conflict", error.message, 409);

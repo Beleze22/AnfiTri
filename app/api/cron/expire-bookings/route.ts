@@ -1,6 +1,7 @@
 import { NextResponse } from "next/server";
 
 import { expireOverdueBookings } from "@/lib/server/booking/service";
+import { cleanupExpiredRateLimits } from "@/lib/server/rate-limit";
 
 export async function GET(request: Request) {
   const authHeader = request.headers.get("authorization");
@@ -12,5 +13,7 @@ export async function GET(request: Request) {
   }
 
   const count = await expireOverdueBookings();
-  return NextResponse.json({ expired: count });
+  // Aproveita o cron de 15 min para varrer contadores de rate limit vencidos.
+  const cleanedRateLimits = await cleanupExpiredRateLimits();
+  return NextResponse.json({ expired: count, cleanedRateLimits });
 }

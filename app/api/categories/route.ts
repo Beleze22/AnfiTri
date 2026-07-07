@@ -1,7 +1,7 @@
 import { NextResponse } from "next/server";
 import { z } from "zod";
 
-import { apiError, requireSession } from "@/lib/server/http";
+import { apiError, readJson, requireSession } from "@/lib/server/http";
 import { getCategories, saveCategories } from "@/lib/server/categories";
 
 // Leitura pública — usada pela Home (chips de filtro) e formulários de
@@ -28,7 +28,7 @@ export async function POST(request: Request) {
     return apiError("unauthorized", "Não autorizado.", 401);
   }
 
-  const parsed = categoryInput.safeParse(await request.json());
+  const parsed = categoryInput.safeParse(await readJson(request));
   if (!parsed.success) {
     return apiError("invalid_input", "Dados inválidos.", 400);
   }

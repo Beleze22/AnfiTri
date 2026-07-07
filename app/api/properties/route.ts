@@ -2,7 +2,7 @@ import { NextResponse } from "next/server";
 import { z } from "zod";
 
 import { prisma } from "@/lib/db/client";
-import { apiError, requireSession } from "@/lib/server/http";
+import { apiError, readJson, requireSession } from "@/lib/server/http";
 import { listPublishedProperties } from "@/lib/server/properties/service";
 
 const query = z.object({
@@ -52,7 +52,7 @@ export async function POST(request: Request) {
     return apiError("unauthorized", "Não autorizado.", 401);
   }
 
-  const parsed = createInput.safeParse(await request.json());
+  const parsed = createInput.safeParse(await readJson(request));
   if (!parsed.success) {
     return apiError("invalid_input", "Dados inválidos.", 400);
   }

@@ -89,7 +89,7 @@ export function SettingsForm() {
   }
 
   return (
-    <div className="max-w-[620px] p-6">
+    <div className="max-w-155 p-4 md:p-6">
       <h1 className="mb-5 text-page-title font-semibold text-text-primary">
         Configurações
       </h1>

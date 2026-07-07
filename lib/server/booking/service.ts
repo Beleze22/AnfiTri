@@ -29,7 +29,7 @@ export async function getManagerExpiryConfig() {
   };
 }
 
-async function findOverlap(
+export async function findOverlap(
   tx: Prisma.TransactionClient,
   propertyId: string,
   checkIn: Date,
@@ -79,6 +79,12 @@ export function getOccupiedRanges(propertyId: string) {
 // negociam com o gestor. A checagem de sobreposição + criação roda numa
 // transação serializable para cobrir o caso de duas requisições simultâneas
 // para a mesma data (condição de corrida, seção 4 do plano de implementação).
+//
+// O e-mail informado não é verificado neste ponto, então um e-mail já
+// cadastrado nunca tem nome/telefone sobrescritos nem ganha sessão aqui
+// (isNewUser=false) — senão qualquer pessoa assumiria a conta de um hóspede
+// só de conhecer o e-mail dele. O acesso do usuário existente vem pelo
+// magic link.
 export async function createSiteBooking(input: {
   propertyId: string;
   checkIn: Date;
@@ -107,16 +113,19 @@ export async function createSiteBooking(input: {
           throw new BookingConflictError("Datas não mais disponíveis.");
         }
 
-        const guest = await tx.user.upsert({
+        const existingGuest = await tx.user.findUnique({
           where: { email: input.email },
-          update: { name: input.name, phone: input.phone },
-          create: {
-            name: input.name,
-            email: input.email,
-            phone: input.phone,
-            role: "hospede",
-          },
         });
+        const guest =
+          existingGuest ??
+          (await tx.user.create({
+            data: {
+              name: input.name,
+              email: input.email,
+              phone: input.phone,
+              role: "hospede",
+            },
+          }));
 
         const createdAt = new Date();
         const expiresAt = calculateExpiresAt(createdAt, config);
@@ -136,7 +145,7 @@ export async function createSiteBooking(input: {
           },
         });
 
-        return { booking, guest };
+        return { booking, guest, isNewUser: !existingGuest };
       },
       { isolationLevel: Prisma.TransactionIsolationLevel.Serializable },
     );
@@ -210,30 +219,47 @@ export async function createManualBooking(input: {
   );
 }
 
+// Transições usam updateMany com a condição de status no where — a leitura
+// separada abria janela para duas requisições simultâneas (ex: confirmar e
+// cancelar) passarem ambas pela checagem.
 export async function confirmBooking(id: string) {
-  const booking = await prisma.booking.findUniqueOrThrow({ where: { id } });
-  if (booking.status !== "pendente") {
-    throw new InvalidTransitionError(
-      "Só é possível confirmar uma reserva pendente.",
-    );
-  }
-  return prisma.booking.update({
-    where: { id },
+  const result = await prisma.booking.updateMany({
+    where: {
+      id,
+      status: "pendente",
+      // Pendente já vencida não pode ser confirmada, mesmo que o job de
+      // expiração (a cada 15 min) ainda não a tenha varrido.
+      OR: [{ expiresAt: null }, { expiresAt: { gt: new Date() } }],
+    },
     data: { status: "confirmado" },
   });
+
+  if (result.count === 0) {
+    const booking = await prisma.booking.findUniqueOrThrow({ where: { id } });
+    throw new InvalidTransitionError(
+      booking.status === "pendente"
+        ? "O prazo de confirmação dessa reserva já venceu."
+        : "Só é possível confirmar uma reserva pendente.",
+    );
+  }
+
+  return prisma.booking.findUniqueOrThrow({ where: { id } });
 }
 
 export async function cancelBooking(id: string) {
-  const booking = await prisma.booking.findUniqueOrThrow({ where: { id } });
-  if (booking.status !== "pendente" && booking.status !== "confirmado") {
+  const result = await prisma.booking.updateMany({
+    where: { id, status: { in: ["pendente", "confirmado"] } },
+    data: { status: "cancelado" },
+  });
+
+  if (result.count === 0) {
+    await prisma.booking.findUniqueOrThrow({ where: { id } });
     throw new InvalidTransitionError(
       "Só é possível cancelar uma reserva pendente ou confirmada.",
     );
   }
-  return prisma.booking.update({
-    where: { id },
-    data: { status: "cancelado" },
-  });
+
+  return prisma.booking.findUniqueOrThrow({ where: { id } });
 }
 
 export function getBookingById(id: string) {

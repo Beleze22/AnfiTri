@@ -1,5 +1,7 @@
 "use client";
 
+import { IconChevronLeft } from "@tabler/icons-react";
+import Link from "next/link";
 import { useState } from "react";
 
 import { BookingDetailPanel } from "@/components/manager/BookingDetailPanel";
@@ -27,9 +29,17 @@ export function ConversationThreadView({
   const [panelOpen, setPanelOpen] = useState(false);
 
   return (
-    <div className="flex h-screen flex-1 flex-col">
-      <header className="flex shrink-0 items-center justify-between border-b border-border bg-surface px-4 py-3">
-        <div>
+    <div className="flex h-full flex-1 flex-col">
+      <header className="flex shrink-0 items-center justify-between gap-2 border-b border-border bg-surface px-4 py-3">
+        {/* No mobile a lista de conversas fica escondida — a volta é por aqui. */}
+        <Link
+          href="/gestor/mensagens"
+          aria-label="Voltar para as conversas"
+          className="-ml-1 shrink-0 text-text-secondary md:hidden"
+        >
+          <IconChevronLeft size={22} />
+        </Link>
+        <div className="min-w-0 flex-1">
           <p className="text-body font-semibold text-text-primary">
             {guestName}
           </p>

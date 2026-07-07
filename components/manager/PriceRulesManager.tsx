@@ -1,5 +1,6 @@
 "use client";
 
+import { IconChevronLeft, IconChevronRight } from "@tabler/icons-react";
 import { useCallback, useEffect, useState } from "react";
 
 const WEEKDAY_LABELS = ["Dom", "Seg", "Ter", "Qua", "Qui", "Sex", "Sáb"];
@@ -30,10 +31,16 @@ const dateFormatter = new Intl.DateTimeFormat("pt-BR", {
   timeZone: "UTC",
 });
 
+const MONTH_FORMATTER = new Intl.DateTimeFormat("pt-BR", {
+  month: "short",
+  year: "numeric",
+  timeZone: "UTC",
+});
+
 function emptyForm() {
   return {
     name: "",
-    ruleType: SUGGESTED_TYPES[0],
+    ruleType: "",
     startDate: "",
     endDate: "",
     daysOfWeek: [] as number[],
@@ -53,10 +60,20 @@ export function PriceRulesManager() {
   const [showForm, setShowForm] = useState(false);
   const [form, setForm] = useState(emptyForm());
   const today = new Date();
-  const [previewMonth] = useState({
+  const [previewMonth, setPreviewMonth] = useState({
     year: today.getUTCFullYear(),
     month: today.getUTCMonth() + 1,
   });
+  // Ano da lista de feriados carregada — navegar o preview para outro ano
+  // invalida a lista e força novo fetch.
+  const [holidaysYear, setHolidaysYear] = useState<number | null>(null);
+
+  function shiftPreviewMonth(delta: number) {
+    setPreviewMonth((current) => {
+      const date = new Date(Date.UTC(current.year, current.month - 1 + delta));
+      return { year: date.getUTCFullYear(), month: date.getUTCMonth() + 1 };
+    });
+  }
 
   useEffect(() => {
     fetch("/api/manager/properties")
@@ -87,12 +104,17 @@ export function PriceRulesManager() {
 
   function loadHolidays() {
     setShowHolidays((current) => !current);
-    if (holidays.length === 0) {
-      fetch(`/api/holidays?year=${previewMonth.year}`)
-        .then((response) => response.json())
-        .then(setHolidays);
-    }
   }
+
+  useEffect(() => {
+    if (!showHolidays || holidaysYear === previewMonth.year) return;
+    fetch(`/api/holidays?year=${previewMonth.year}`)
+      .then((response) => response.json())
+      .then((data) => {
+        setHolidays(data);
+        setHolidaysYear(previewMonth.year);
+      });
+  }, [showHolidays, previewMonth.year, holidaysYear]);
 
   async function handleCreate(event: React.FormEvent) {
     event.preventDefault();
@@ -122,7 +144,7 @@ export function PriceRulesManager() {
   }
 
   return (
-    <div className="p-6">
+    <div className="p-4 md:p-6">
       <h1 className="mb-4 text-page-title font-semibold text-text-primary">
         Regras de preço
       </h1>
@@ -130,7 +152,7 @@ export function PriceRulesManager() {
       <select
         value={propertyId ?? ""}
         onChange={(event) => setPropertyId(event.target.value)}
-        className="rounded-card border border-border bg-surface px-3 py-2 text-body text-text-primary"
+        className="w-full rounded-card border border-border bg-surface px-3 py-2 text-body text-text-primary md:w-auto"
       >
         {properties.map((property) => (
           <option key={property.id} value={property.id}>
@@ -139,7 +161,7 @@ export function PriceRulesManager() {
         ))}
       </select>
 
-      <div className="mt-5 grid grid-cols-2 gap-6">
+      <div className="mt-5 grid grid-cols-1 gap-6 lg:grid-cols-2">
         <section>
           <div className="mb-3 flex items-center justify-between">
             <h2 className="text-card-title font-semibold text-text-primary">
@@ -169,7 +191,8 @@ export function PriceRulesManager() {
                 className="w-full rounded-card border border-border px-3 py-2 text-body"
               />
               <input
-                placeholder="Categoria (ex: fim_de_semana, feriado...)"
+                required
+                placeholder="Categoria — escolha uma sugestão ou digite uma nova"
                 list="rule-type-suggestions"
                 value={form.ruleType}
                 onChange={(event) =>
@@ -326,9 +349,34 @@ export function PriceRulesManager() {
         </section>
 
         <section>
-          <h2 className="mb-3 text-card-title font-semibold text-text-primary">
-            Pré-visualização — {previewMonth.month}/{previewMonth.year}
-          </h2>
+          <div className="mb-3 flex flex-wrap items-center justify-between gap-2">
+            <h2 className="text-card-title font-semibold text-text-primary">
+              Pré-visualização
+            </h2>
+            <div className="flex items-center gap-1">
+              <button
+                type="button"
+                aria-label="Mês anterior"
+                onClick={() => shiftPreviewMonth(-1)}
+                className="rounded-pill p-1.5 text-text-secondary"
+              >
+                <IconChevronLeft size={18} />
+              </button>
+              <span className="min-w-28 text-center text-body text-text-secondary">
+                {MONTH_FORMATTER.format(
+                  new Date(Date.UTC(previewMonth.year, previewMonth.month - 1)),
+                )}
+              </span>
+              <button
+                type="button"
+                aria-label="Próximo mês"
+                onClick={() => shiftPreviewMonth(1)}
+                className="rounded-pill p-1.5 text-text-secondary"
+              >
+                <IconChevronRight size={18} />
+              </button>
+            </div>
+          </div>
           <div className="grid grid-cols-7 gap-1">
             {preview.map((day) => {
               const affected = day.appliedRules.length > 0;

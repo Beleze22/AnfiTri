@@ -23,8 +23,7 @@ function CoverPhoto({
   return <img src={photo.url} alt="" className={`${className} object-cover`} />;
 }
 
-// Card completo — usado na lista simples (sem datas) e na seção "Disponíveis
-// nessas datas" (design-ui-ux.md, seção 3.5).
+// Card completo — orientação vertical para grid responsivo (seção 3.5).
 export function PropertyCard({
   property,
   priceLabel,
@@ -35,13 +34,10 @@ export function PropertyCard({
   return (
     <Link
       href={`/hospedagens/${property.slug}`}
-      className="flex gap-3 rounded-card border border-border bg-surface p-3"
+      className="flex flex-col rounded-card border border-border bg-surface overflow-hidden"
     >
-      <CoverPhoto
-        photo={property.photos[0]}
-        className="h-20 w-20 shrink-0 rounded-card"
-      />
-      <div className="flex flex-col justify-center">
+      <CoverPhoto photo={property.photos[0]} className="aspect-4/3 w-full" />
+      <div className="flex flex-col p-3">
         <span className="text-card-title font-semibold text-text-primary">
           {property.title}
         </span>

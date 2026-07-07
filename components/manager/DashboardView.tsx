@@ -59,12 +59,12 @@ export function DashboardView({
   }
 
   return (
-    <div className="p-6">
+    <div className="p-4 md:p-6">
       <h1 className="mb-5 text-page-title font-semibold text-text-primary">
         Dashboard
       </h1>
 
-      <div className="grid grid-cols-4 gap-4">
+      <div className="grid grid-cols-2 gap-3 md:grid-cols-4 md:gap-4">
         <MetricCard label="Pendentes" value={metrics.pendingCount} />
         <MetricCard
           label="Confirmadas (mês)"
@@ -77,7 +77,7 @@ export function DashboardView({
         <MetricCard label="Mensagens novas" value={metrics.unreadCount} />
       </div>
 
-      <div className="mt-8 grid grid-cols-2 gap-6">
+      <div className="mt-8 grid grid-cols-1 gap-6 lg:grid-cols-2">
         <section>
           <h2 className="mb-3 text-card-title font-semibold text-text-primary">
             Reservas pendentes

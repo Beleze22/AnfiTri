@@ -133,19 +133,21 @@ export default function Home() {
         </div>
       </div>
 
-      <div className="mt-4 flex flex-col gap-3 px-4">
+      <div className="mt-4 px-4">
         {!data ? null : !data.withDates ? (
-          data.properties.map((property) => (
-            <PropertyCard key={property.slug} property={property} />
-          ))
+          <div className="grid grid-cols-1 gap-4 sm:grid-cols-2 lg:grid-cols-3 xl:grid-cols-4">
+            {data.properties.map((property) => (
+              <PropertyCard key={property.slug} property={property} />
+            ))}
+          </div>
         ) : (
           <>
             {data.available.length > 0 && (
               <div>
-                <p className="mb-2 text-card-title font-semibold text-text-primary">
+                <p className="mb-3 text-card-title font-semibold text-text-primary">
                   Disponíveis nessas datas
                 </p>
-                <div className="flex flex-col gap-3">
+                <div className="grid grid-cols-1 gap-4 sm:grid-cols-2 lg:grid-cols-3 xl:grid-cols-4">
                   {data.available.map((property) => (
                     <PropertyCard
                       key={property.slug}
@@ -157,7 +159,7 @@ export default function Home() {
               </div>
             )}
             {data.unavailable.length > 0 && (
-              <div className="mt-2">
+              <div className="mt-6">
                 <p className="mb-2 text-card-title font-semibold text-text-primary">
                   Indisponíveis nesse período
                 </p>

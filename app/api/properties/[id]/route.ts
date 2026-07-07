@@ -2,7 +2,7 @@ import { NextResponse } from "next/server";
 import { z } from "zod";
 
 import { prisma } from "@/lib/db/client";
-import { apiError, requireSession } from "@/lib/server/http";
+import { apiError, readJson, requireSession } from "@/lib/server/http";
 import { getPropertyById } from "@/lib/server/properties/service";
 
 type RouteContext = { params: Promise<{ id: string }> };
@@ -41,7 +41,7 @@ export async function PATCH(request: Request, { params }: RouteContext) {
   }
 
   const { id } = await params;
-  const parsed = updateInput.safeParse(await request.json());
+  const parsed = updateInput.safeParse(await readJson(request));
   if (!parsed.success) {
     return apiError("invalid_input", "Dados inválidos.", 400);
   }

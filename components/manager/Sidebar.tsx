@@ -4,12 +4,15 @@ import {
   IconCalendarWeek,
   IconHome2,
   IconLayoutDashboard,
+  IconMenu2,
   IconMessageCircle2,
   IconSettings,
   IconTag,
+  IconX,
 } from "@tabler/icons-react";
 import Link from "next/link";
 import { usePathname } from "next/navigation";
+import { useState } from "react";
 
 const ITEMS = [
   { href: "/gestor", label: "Dashboard", icon: IconLayoutDashboard },
@@ -24,49 +27,111 @@ const ITEMS = [
   },
 ];
 
-// Sidebar fixa do gestor (design-ui-ux.md, seção 3.7) — layout-base de toda
-// a área /gestor/*, reaproveitada por todas as telas (nunca recriada).
+function isActive(pathname: string, href: string) {
+  return href === "/gestor"
+    ? pathname === "/gestor"
+    : pathname.startsWith(href);
+}
+
+// Navegação do gestor (design-ui-ux.md, seção 3.7). O painel prioriza
+// notebook: sidebar fixa a partir de md. Abaixo disso vira topbar + drawer —
+// são 6 itens, demais para um bottom nav como o da área pública.
 export function Sidebar({ managerName }: { managerName: string }) {
   const pathname = usePathname();
+  const [drawerOpen, setDrawerOpen] = useState(false);
+
+  const navItems = (
+    <nav className="flex-1">
+      {ITEMS.map((item) => {
+        const active = isActive(pathname, item.href);
+        const Icon = item.icon;
+        return (
+          <Link
+            key={item.href}
+            href={item.href}
+            // Navegar fecha o drawer — este componente vive no layout e não
+            // desmonta na troca de rota. Inócuo na sidebar desktop.
+            onClick={() => setDrawerOpen(false)}
+            className={`flex items-center gap-2.5 border-r-2 px-4 py-2.5 text-body ${
+              active
+                ? "border-accent bg-accent-light text-accent-dark"
+                : "border-transparent text-text-secondary"
+            }`}
+          >
+            <Icon size={18} />
+            {item.label}
+          </Link>
+        );
+      })}
+    </nav>
+  );
+
+  const footer = (
+    <div className="border-t border-border px-4 py-3 text-caption text-text-secondary">
+      <p>{managerName}</p>
+      <form action="/api/auth/logout" method="post">
+        <button type="submit" className="mt-1 underline">
+          Sair
+        </button>
+      </form>
+    </div>
+  );
 
   return (
-    <aside className="flex h-screen w-[200px] shrink-0 flex-col border-r border-border bg-surface">
-      <div className="px-4 py-5 text-card-title font-semibold text-text-primary">
-        anfitri
-      </div>
+    <>
+      {/* Topbar mobile — mesma altura (h-14) usada no cálculo de altura da
+          tela de mensagens; mudar aqui exige mudar lá. */}
+      <header className="sticky top-0 z-10 flex h-14 items-center justify-between border-b border-border bg-surface px-4 md:hidden">
+        <span className="text-card-title font-semibold text-text-primary">
+          anfitri
+        </span>
+        <button
+          type="button"
+          aria-label="Abrir menu"
+          onClick={() => setDrawerOpen(true)}
+          className="p-1 text-text-primary"
+        >
+          <IconMenu2 size={24} />
+        </button>
+      </header>
 
-      <nav className="flex-1">
-        {ITEMS.map((item) => {
-          const active =
-            item.href === "/gestor"
-              ? pathname === "/gestor"
-              : pathname.startsWith(item.href);
-          const Icon = item.icon;
-          return (
-            <Link
-              key={item.href}
-              href={item.href}
-              className={`flex items-center gap-2.5 border-r-2 px-4 py-2.5 text-body ${
-                active
-                  ? "border-accent bg-accent-light text-accent-dark"
-                  : "border-transparent text-text-secondary"
-              }`}
-            >
-              <Icon size={18} />
-              {item.label}
-            </Link>
-          );
-        })}
-      </nav>
-
-      <div className="border-t border-border px-4 py-3 text-caption text-text-secondary">
-        <p>{managerName}</p>
-        <form action="/api/auth/logout" method="post">
-          <button type="submit" className="mt-1 underline">
-            Sair
+      {/* Drawer mobile */}
+      <div
+        onClick={() => setDrawerOpen(false)}
+        className={`fixed inset-0 z-20 bg-[rgba(39,39,39,0.25)] transition-opacity md:hidden ${
+          drawerOpen ? "opacity-100" : "pointer-events-none opacity-0"
+        }`}
+      />
+      <aside
+        className={`fixed inset-y-0 right-0 z-30 flex w-65 max-w-[80vw] flex-col bg-surface shadow-lg transition-transform md:hidden ${
+          drawerOpen ? "translate-x-0" : "translate-x-full"
+        }`}
+      >
+        <div className="flex items-center justify-between px-4 py-4">
+          <span className="text-card-title font-semibold text-text-primary">
+            anfitri
+          </span>
+          <button
+            type="button"
+            aria-label="Fechar menu"
+            onClick={() => setDrawerOpen(false)}
+            className="p-1 text-text-secondary"
+          >
+            <IconX size={22} />
           </button>
-        </form>
-      </div>
-    </aside>
+        </div>
+        {navItems}
+        {footer}
+      </aside>
+
+      {/* Sidebar desktop */}
+      <aside className="hidden h-screen w-50 shrink-0 flex-col border-r border-border bg-surface md:flex">
+        <div className="px-4 py-5 text-card-title font-semibold text-text-primary">
+          anfitri
+        </div>
+        {navItems}
+        {footer}
+      </aside>
+    </>
   );
 }

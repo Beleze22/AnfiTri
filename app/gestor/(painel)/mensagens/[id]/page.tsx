@@ -33,7 +33,7 @@ export default async function GestorConversationPage({
 
   return (
     <>
-      <ConversationList activeId={id} />
+      <ConversationList activeId={id} hideOnMobile />
       <ConversationThreadView
         conversationId={id}
         bookingId={conversation.booking.id}

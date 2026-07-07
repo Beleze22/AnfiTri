@@ -49,7 +49,9 @@ export function MessageThread({
 
   return (
     <div className="flex h-full flex-col">
-      <div className="flex-1 space-y-2 overflow-y-auto px-4 py-3">
+      {/* Fundo neutro explícito: o balão recebido é bg-surface e precisa de
+          contraste com a área da conversa em qualquer tela (gestor/hóspede). */}
+      <div className="flex-1 space-y-2 overflow-y-auto bg-bg px-4 py-3">
         {messages?.map((message) => {
           const isOwn = message.senderId === viewerId;
           return (
@@ -61,7 +63,7 @@ export function MessageThread({
                 className={`max-w-[75%] rounded-card px-3 py-2 text-body ${
                   isOwn
                     ? "bg-accent text-accent-text"
-                    : "bg-bg text-text-primary"
+                    : "border border-border bg-surface text-text-primary"
                 }`}
               >
                 {message.content}

@@ -80,6 +80,7 @@ model Photo {
   order      Int
   isCover    Boolean  @default(false) @map("is_cover")
 
+  @@index([propertyId])
   @@map("photos")
 }
 
@@ -104,6 +105,10 @@ model Booking {
 
   conversation Conversation?
 
+  // (property_id, status) cobre toda checagem de disponibilidade/overlap;
+  // user_id cobre "minhas reservas" do hóspede.
+  @@index([propertyId, status])
+  @@index([userId])
   @@map("bookings")
 }
 
@@ -125,6 +130,7 @@ model PriceRule {
   daysOfWeek Int[]    @default([]) @map("days_of_week")
   multiplier Decimal  @db.Decimal(4, 2)
 
+  @@index([propertyId])
   @@map("price_rules")
 }
 
@@ -135,6 +141,7 @@ model Amenity {
   name       String
   icon       String
 
+  @@index([propertyId])
   @@map("amenities")
 }
 
@@ -172,6 +179,7 @@ model MagicLinkToken {
   usedAt    DateTime? @map("used_at")
   createdAt DateTime  @default(now()) @map("created_at")
 
+  @@index([userId])
   @@map("magic_link_tokens")
 }
 
@@ -197,5 +205,17 @@ model Message {
   createdAt      DateTime     @default(now()) @map("created_at")
   read           Boolean      @default(false)
 
+  @@index([conversationId, read])
   @@map("messages")
+}
+
+// Contadores de rate limiting em janela fixa — key = "escopo:identificador:
+// bucket da janela". Postgres em vez de Redis: sem serviço novo na stack e
+// funciona em serverless (memória de processo não sobrevive entre invocações).
+model RateLimit {
+  key       String   @id
+  count     Int
+  expiresAt DateTime @map("expires_at")
+
+  @@map("rate_limits")
 }

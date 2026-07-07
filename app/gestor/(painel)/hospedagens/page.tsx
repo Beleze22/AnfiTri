@@ -18,8 +18,8 @@ export default async function HospedagensPage() {
   const properties = await listAllPropertiesForManager();
 
   return (
-    <div className="p-6">
-      <div className="flex items-center justify-between">
+    <div className="p-4 md:p-6">
+      <div className="flex flex-wrap items-center justify-between gap-2">
         <h1 className="text-page-title font-semibold text-text-primary">
           Hospedagens
         </h1>
@@ -31,14 +31,23 @@ export default async function HospedagensPage() {
         </Link>
       </div>
 
-      <div className="mt-5 grid grid-cols-3 gap-4">
+      <div className="mt-5 grid grid-cols-1 gap-4 sm:grid-cols-2 xl:grid-cols-3">
         {properties.map((property) => (
           <Link
             key={property.id}
             href={`/gestor/hospedagens/${property.id}`}
             className="rounded-card border border-border bg-surface p-4"
           >
-            <div className="h-32 rounded-card bg-border" />
+            {property.photos[0] ? (
+              // eslint-disable-next-line @next/next/no-img-element -- URL do Supabase Storage
+              <img
+                src={property.photos[0].url}
+                alt=""
+                className="h-32 w-full rounded-card object-cover"
+              />
+            ) : (
+              <div className="h-32 rounded-card bg-border" />
+            )}
             <div className="mt-3 flex items-center justify-between">
               <p className="text-body font-medium text-text-primary">
                 {property.title}

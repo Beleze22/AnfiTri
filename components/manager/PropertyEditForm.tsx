@@ -1,6 +1,8 @@
 "use client";
 
 import {
+  IconChevronLeft,
+  IconChevronRight,
   IconPlus,
   IconStar,
   IconStarFilled,
@@ -57,6 +59,7 @@ export function PropertyEditForm({
   const [categories, setCategories] = useState<Category[]>([]);
   const [saved, setSaved] = useState(false);
   const [uploading, setUploading] = useState(false);
+  const [uploadError, setUploadError] = useState<string | null>(null);
   const [newAmenityName, setNewAmenityName] = useState("");
   const [newAmenityIcon, setNewAmenityIcon] = useState(ICON_SUGGESTIONS[0]);
   const fileInputRef = useRef<HTMLInputElement>(null);
@@ -93,22 +96,47 @@ export function PropertyEditForm({
   }
 
   async function handleUpload(event: React.ChangeEvent<HTMLInputElement>) {
-    const file = event.target.files?.[0];
-    if (!file) return;
+    const files = Array.from(event.target.files ?? []);
+    if (files.length === 0) return;
     setUploading(true);
+    setUploadError(null);
     const formData = new FormData();
-    formData.append("file", file);
+    for (const file of files) {
+      formData.append("file", file);
+    }
     const response = await fetch(`/api/properties/${property.id}/photos`, {
       method: "POST",
       body: formData,
     });
-    const photo = await response.json();
-    setProperty((current) => ({
-      ...current,
-      photos: [...current.photos, photo],
-    }));
+    const body = await response.json();
+    if (!response.ok) {
+      setUploadError(body.error?.message ?? "Não foi possível enviar.");
+    } else {
+      setProperty((current) => ({
+        ...current,
+        photos: [...current.photos, ...body],
+      }));
+    }
     setUploading(false);
     if (fileInputRef.current) fileInputRef.current.value = "";
+  }
+
+  // Move a foto uma posição para a esquerda/direita e persiste a ordem
+  // completa — a posição na grade é a ordem em que o hóspede vê no carrossel.
+  async function handleMovePhoto(photoId: string, direction: -1 | 1) {
+    const from = property.photos.findIndex((photo) => photo.id === photoId);
+    const to = from + direction;
+    if (from === -1 || to < 0 || to >= property.photos.length) return;
+
+    const reordered = [...property.photos];
+    [reordered[from], reordered[to]] = [reordered[to], reordered[from]];
+    setProperty((current) => ({ ...current, photos: reordered }));
+
+    await fetch(`/api/properties/${property.id}/photos`, {
+      method: "PATCH",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ photoIds: reordered.map((photo) => photo.id) }),
+    });
   }
 
   async function handleSetCover(photoId: string) {
@@ -158,8 +186,8 @@ export function PropertyEditForm({
   }
 
   return (
-    <div className="p-6">
-      <div className="flex items-center gap-3">
+    <div className="p-4 md:p-6">
+      <div className="flex flex-wrap items-center gap-3">
         <h1 className="text-page-title font-semibold text-text-primary">
           {property.title || "Hospedagem"}
         </h1>
@@ -169,14 +197,14 @@ export function PropertyEditForm({
         />
       </div>
 
-      <div className="mt-5 grid grid-cols-2 gap-8">
+      <div className="mt-5 grid grid-cols-1 gap-8 lg:grid-cols-2">
         {/* Coluna esquerda — conteúdo da vitrine */}
         <div>
           <h2 className="mb-2 text-card-title font-semibold text-text-primary">
             Fotos
           </h2>
           <div className="grid grid-cols-3 gap-2">
-            {property.photos.map((photo) => (
+            {property.photos.map((photo, index) => (
               <div key={photo.id} className="group relative">
                 {/* eslint-disable-next-line @next/next/no-img-element -- URL do Supabase Storage */}
                 <img
@@ -204,6 +232,26 @@ export function PropertyEditForm({
                 >
                   <IconTrash size={14} className="text-accent-dark" />
                 </button>
+                {index > 0 && (
+                  <button
+                    type="button"
+                    onClick={() => handleMovePhoto(photo.id, -1)}
+                    aria-label="Mover para antes"
+                    className="absolute bottom-1 left-1 rounded-full bg-surface/90 p-1"
+                  >
+                    <IconChevronLeft size={14} className="text-text-primary" />
+                  </button>
+                )}
+                {index < property.photos.length - 1 && (
+                  <button
+                    type="button"
+                    onClick={() => handleMovePhoto(photo.id, 1)}
+                    aria-label="Mover para depois"
+                    className="absolute bottom-1 right-1 rounded-full bg-surface/90 p-1"
+                  >
+                    <IconChevronRight size={14} className="text-text-primary" />
+                  </button>
+                )}
               </div>
             ))}
             <button
@@ -217,11 +265,19 @@ export function PropertyEditForm({
             <input
               ref={fileInputRef}
               type="file"
+              multiple
               accept="image/jpeg,image/png,image/webp"
               onChange={handleUpload}
               className="hidden"
             />
           </div>
+          <p className="mt-1 text-caption text-text-secondary">
+            O hóspede vê a capa (estrela) primeiro e as demais nesta ordem — use
+            as setas para reordenar.
+          </p>
+          {uploadError && (
+            <p className="mt-1 text-caption text-accent-dark">{uploadError}</p>
+          )}
 
           <h2 className="mb-2 mt-6 text-card-title font-semibold text-text-primary">
             Informações básicas

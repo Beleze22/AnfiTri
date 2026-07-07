@@ -8,8 +8,12 @@ export type SessionPayload = {
 };
 
 export const SESSION_COOKIE = "session";
+// Duração do JWT e maxAge do cookie andam juntos — mudar um sem o outro
+// deixaria cookie vivo com token morto (ou vice-versa).
 export const MANAGER_SESSION_DURATION = "7d";
+export const MANAGER_SESSION_MAX_AGE_SECONDS = 60 * 60 * 24 * 7;
 export const GUEST_SESSION_DURATION = "60d";
+export const GUEST_SESSION_MAX_AGE_SECONDS = 60 * 60 * 24 * 60;
 
 function getSecretKey() {
   const secret = process.env.JWT_SECRET;

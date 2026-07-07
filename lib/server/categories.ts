@@ -29,6 +29,10 @@ export async function saveCategories(categories: Category[]) {
   await prisma.systemConfig.upsert({
     where: { key: CONFIG_KEY },
     update: { value: JSON.stringify(categories) },
-    create: { id: `config-${CONFIG_KEY}`, key: CONFIG_KEY, value: JSON.stringify(categories) },
+    create: {
+      id: `config-${CONFIG_KEY}`,
+      key: CONFIG_KEY,
+      value: JSON.stringify(categories),
+    },
   });
 }
