@@ -31,7 +31,19 @@ export function MessageThread({
       .then(setMessages);
   }
 
-  useEffect(load, [conversationId]);
+  // Polling enquanto a conversa está aberta — mensagens do outro lado
+  // aparecem sem recarregar. Escala atual (um gestor + poucos hóspedes)
+  // não justifica WebSocket/Realtime; ver discussão na Etapa de melhorias.
+  useEffect(() => {
+    load();
+    const interval = setInterval(load, 5000);
+    window.addEventListener("focus", load);
+    return () => {
+      clearInterval(interval);
+      window.removeEventListener("focus", load);
+    };
+    // eslint-disable-next-line react-hooks/exhaustive-deps -- load só depende de conversationId
+  }, [conversationId]);
 
   async function handleSubmit(event: React.FormEvent) {
     event.preventDefault();

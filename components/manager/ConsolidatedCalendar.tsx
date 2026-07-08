@@ -154,33 +154,30 @@ export function ConsolidatedCalendar() {
                   />
                 ))}
                 {property.bookings.map((booking) => {
-                  const startCol = Math.max(
-                    0,
-                    Math.round(
-                      (new Date(booking.checkIn).getTime() -
-                        weekStart.getTime()) /
-                        (1000 * 60 * 60 * 24),
-                    ),
-                  );
-                  const endCol = Math.min(
-                    7,
-                    Math.round(
-                      (new Date(booking.checkOut).getTime() -
-                        weekStart.getTime()) /
-                        (1000 * 60 * 60 * 24),
-                    ),
-                  );
-                  if (endCol <= 0 || startCol >= 7) return null;
+                  const DAY_MS = 1000 * 60 * 60 * 24;
+                  // Posição em dias (fracionária) relativa ao início da
+                  // semana. Convenção de calendário de hospedagem: a pílula
+                  // começa no MEIO do dia de check-in e termina no MEIO do
+                  // dia de check-out — o hóspede sai de manhã, então a 2ª
+                  // metade do dia de saída fica visivelmente livre (e duas
+                  // reservas encostadas não se sobrepõem).
+                  const checkInDays =
+                    (new Date(booking.checkIn).getTime() -
+                      weekStart.getTime()) /
+                    DAY_MS;
+                  const checkOutDays =
+                    (new Date(booking.checkOut).getTime() -
+                      weekStart.getTime()) /
+                    DAY_MS;
+                  const startPos = Math.max(0, checkInDays + 0.5);
+                  const endPos = Math.min(7, checkOutDays + 0.5);
+                  if (endPos <= 0 || startPos >= 7) return null;
 
                   // Cantos arredondados só onde a reserva começa/termina nesta
                   // semana — se estiver cortada pela semana anterior/seguinte,
                   // o lado cortado fica reto (efeito "pílula contínua").
-                  const startsThisWeek =
-                    new Date(booking.checkIn).getTime() >= weekStart.getTime();
-                  const weekEnd = new Date(weekStart);
-                  weekEnd.setUTCDate(weekEnd.getUTCDate() + 7);
-                  const endsThisWeek =
-                    new Date(booking.checkOut).getTime() <= weekEnd.getTime();
+                  const startsThisWeek = checkInDays + 0.5 >= 0;
+                  const endsThisWeek = checkOutDays + 0.5 <= 7;
                   const roundedClass = [
                     startsThisWeek ? "rounded-l-full" : "",
                     endsThisWeek ? "rounded-r-full" : "",
@@ -194,8 +191,8 @@ export function ConsolidatedCalendar() {
                   // cortado fica rente à borda, colando na semana vizinha.
                   const leftInsetPx = startsThisWeek ? 2 : 0;
                   const rightInsetPx = endsThisWeek ? 2 : 0;
-                  const left = `calc(${(startCol / 7) * 100}% + ${leftInsetPx}px)`;
-                  const width = `calc(${((endCol - startCol) / 7) * 100}% - ${leftInsetPx + rightInsetPx}px)`;
+                  const left = `calc(${(startPos / 7) * 100}% + ${leftInsetPx}px)`;
+                  const width = `calc(${((endPos - startPos) / 7) * 100}% - ${leftInsetPx + rightInsetPx}px)`;
 
                   return (
                     <button
