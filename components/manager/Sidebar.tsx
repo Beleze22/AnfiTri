@@ -12,7 +12,7 @@ import {
 } from "@tabler/icons-react";
 import Link from "next/link";
 import { usePathname } from "next/navigation";
-import { useState } from "react";
+import { useEffect, useState } from "react";
 
 const ITEMS = [
   { href: "/gestor", label: "Dashboard", icon: IconLayoutDashboard },
@@ -39,6 +39,30 @@ function isActive(pathname: string, href: string) {
 export function Sidebar({ managerName }: { managerName: string }) {
   const pathname = usePathname();
   const [drawerOpen, setDrawerOpen] = useState(false);
+  const [hasUnread, setHasUnread] = useState(false);
+
+  // Polling do contador de não-lidas — alimenta a bolinha em "Mensagens"
+  // (e no botão do menu mobile). 30s é suficiente para notificação passiva;
+  // dentro da conversa o polling é o do MessageThread (5s).
+  useEffect(() => {
+    function check() {
+      fetch("/api/manager/unread")
+        .then((response) => response.json())
+        .then((data) => setHasUnread(Boolean(data.unread)))
+        .catch(() => {});
+    }
+    check();
+    const interval = setInterval(check, 30_000);
+    window.addEventListener("focus", check);
+    return () => {
+      clearInterval(interval);
+      window.removeEventListener("focus", check);
+    };
+  }, [pathname]);
+
+  const unreadDot = (
+    <span className="ml-auto h-2 w-2 shrink-0 rounded-full bg-accent" />
+  );
 
   const navItems = (
     <nav className="flex-1">
@@ -60,6 +84,7 @@ export function Sidebar({ managerName }: { managerName: string }) {
           >
             <Icon size={18} />
             {item.label}
+            {item.href === "/gestor/mensagens" && hasUnread && unreadDot}
           </Link>
         );
       })}
@@ -89,9 +114,13 @@ export function Sidebar({ managerName }: { managerName: string }) {
           type="button"
           aria-label="Abrir menu"
           onClick={() => setDrawerOpen(true)}
-          className="p-1 text-text-primary"
+          className="relative p-1 text-text-primary"
         >
           <IconMenu2 size={24} />
+          {/* Não-lidas visíveis sem abrir o drawer. */}
+          {hasUnread && (
+            <span className="absolute right-0 top-0 h-2 w-2 rounded-full bg-accent" />
+          )}
         </button>
       </header>
 
