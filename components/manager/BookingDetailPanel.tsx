@@ -20,6 +20,29 @@ type BookingDetail = {
   property: { title: string };
   user: { name: string; email: string; phone: string | null };
   conversation: { id: string } | null;
+  payment: {
+    status: "aguardando" | "autorizado" | "pago" | "cancelado" | "falhou";
+  } | null;
+};
+
+const PAYMENT_LABELS: Record<string, { label: string; className: string }> = {
+  aguardando: {
+    label: "Aguardando pagamento",
+    className: "bg-amber-light text-amber",
+  },
+  autorizado: {
+    label: "Pagamento garantido",
+    className: "bg-green-light text-green",
+  },
+  pago: { label: "Pago", className: "bg-green-light text-green" },
+  cancelado: {
+    label: "Pagamento cancelado",
+    className: "bg-accent-light text-accent-dark",
+  },
+  falhou: {
+    label: "Cobrança falhou",
+    className: "bg-accent-light text-accent-dark",
+  },
 };
 
 const dateFormatter = new Intl.DateTimeFormat("pt-BR", {
@@ -47,17 +70,29 @@ export function BookingDetailPanel({
   onChanged?: () => void;
 }) {
   const [booking, setBooking] = useState<BookingDetail | null>(null);
+  const [actionError, setActionError] = useState<string | null>(null);
 
   useEffect(() => {
     if (!bookingId) return;
     fetch(`/api/bookings/${bookingId}`)
       .then((response) => response.json())
-      .then(setBooking);
+      .then((data) => {
+        setBooking(data);
+        setActionError(null);
+      });
   }, [bookingId]);
 
   async function handleAction(action: "confirm" | "cancel") {
     if (!bookingId) return;
-    await fetch(`/api/bookings/${bookingId}/${action}`, { method: "PATCH" });
+    setActionError(null);
+    const response = await fetch(`/api/bookings/${bookingId}/${action}`, {
+      method: "PATCH",
+    });
+    if (!response.ok) {
+      const body = await response.json();
+      setActionError(body.error?.message ?? "Não foi possível concluir.");
+      return;
+    }
     onChanged?.();
     onClose();
   }
@@ -98,9 +133,16 @@ export function BookingDetailPanel({
               {dateFormatter.format(new Date(booking.checkIn))} –{" "}
               {dateFormatter.format(new Date(booking.checkOut))}
             </p>
-            <div className="mt-2 flex gap-2">
+            <div className="mt-2 flex flex-wrap gap-2">
               <StatusBadge status={booking.status} />
               {isAirbnb && <StatusBadge status="airbnb" />}
+              {booking.payment && PAYMENT_LABELS[booking.payment.status] && (
+                <span
+                  className={`rounded-pill px-2.5 py-1 text-caption font-medium ${PAYMENT_LABELS[booking.payment.status].className}`}
+                >
+                  {PAYMENT_LABELS[booking.payment.status].label}
+                </span>
+              )}
             </div>
             {booking.totalPrice && (
               <p className="mt-2 text-body font-medium text-text-primary">
@@ -141,6 +183,12 @@ export function BookingDetailPanel({
                   >
                     <IconMessageCircle2 size={16} /> Ver conversa
                   </a>
+                )}
+
+                {actionError && (
+                  <p className="mt-4 rounded-card bg-accent-light p-3 text-caption text-accent-dark">
+                    {actionError}
+                  </p>
                 )}
 
                 {booking.status === "pendente" && (

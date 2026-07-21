@@ -2,6 +2,10 @@ import { Prisma } from "@prisma/client";
 
 import { prisma } from "@/lib/db/client";
 import { calculateExpiresAt } from "@/lib/server/booking/expiry";
+import {
+  captureBookingPayment,
+  releaseBookingPayment,
+} from "@/lib/server/payments/stripe";
 import { calculatePriceForStay } from "@/lib/server/pricing/calculate";
 
 export class BookingConflictError extends Error {}
@@ -223,6 +227,20 @@ export async function createManualBooking(input: {
 // separada abria janela para duas requisições simultâneas (ex: confirmar e
 // cancelar) passarem ambas pela checagem.
 export async function confirmBooking(id: string) {
+  // Pedido com pagamento só confirma com o cartão já autorizado — a
+  // aprovação do gestor é o que dispara a cobrança (captura), como no Airbnb.
+  const withPayment = await prisma.booking.findUniqueOrThrow({
+    where: { id },
+    include: { payment: true },
+  });
+  if (withPayment.payment && withPayment.payment.status !== "autorizado") {
+    throw new InvalidTransitionError(
+      withPayment.payment.status === "aguardando"
+        ? "O hóspede ainda não concluiu o pagamento."
+        : "O pagamento dessa reserva não está mais válido.",
+    );
+  }
+
   const result = await prisma.booking.updateMany({
     where: {
       id,
@@ -243,6 +261,20 @@ export async function confirmBooking(id: string) {
     );
   }
 
+  if (withPayment.payment) {
+    try {
+      await captureBookingPayment(id);
+    } catch (error) {
+      // Cobrança falhou — a confirmação volta atrás para a data não ficar
+      // presa a uma reserva sem pagamento.
+      await prisma.booking.update({
+        where: { id },
+        data: { status: "pendente" },
+      });
+      throw error;
+    }
+  }
+
   return prisma.booking.findUniqueOrThrow({ where: { id } });
 }
 
@@ -259,13 +291,17 @@ export async function cancelBooking(id: string) {
     );
   }
 
+  // Devolve o dinheiro do hóspede: retenção liberada (pendente) ou estorno
+  // integral (já confirmada e paga).
+  await releaseBookingPayment(id);
+
   return prisma.booking.findUniqueOrThrow({ where: { id } });
 }
 
 export function getBookingById(id: string) {
   return prisma.booking.findUnique({
     where: { id },
-    include: { property: true, user: true, conversation: true },
+    include: { property: true, user: true, conversation: true, payment: true },
   });
 }
 
@@ -293,14 +329,35 @@ export function listAllBookings() {
 }
 
 // Job periódico (seção 6.2, último parágrafo) — expira pendentes vencidos,
-// liberando a data.
+// liberando a data. Um por vez, atomicamente: a retenção de cartão só é
+// liberada para pedidos que ESTE job expirou — se o gestor confirmar no
+// mesmo instante, o updateMany condicional perde a corrida e não tocamos no
+// pagamento.
 export async function expireOverdueBookings() {
-  const result = await prisma.booking.updateMany({
-    where: {
-      status: "pendente",
-      expiresAt: { lt: new Date() },
-    },
-    data: { status: "expirado" },
+  const overdue = await prisma.booking.findMany({
+    where: { status: "pendente", expiresAt: { lt: new Date() } },
+    select: { id: true },
   });
-  return result.count;
+
+  let expired = 0;
+  for (const { id } of overdue) {
+    const result = await prisma.booking.updateMany({
+      where: { id, status: "pendente" },
+      data: { status: "expirado" },
+    });
+    if (result.count === 0) continue;
+    expired += 1;
+
+    try {
+      await releaseBookingPayment(id);
+    } catch (error) {
+      // Falha ao liberar não impede a expiração — retenção não capturada
+      // cai sozinha em 7 dias; fica o log para acompanhamento.
+      console.error(
+        `[payments] falha ao liberar retenção (booking ${id}):`,
+        error,
+      );
+    }
+  }
+  return expired;
 }

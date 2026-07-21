@@ -17,6 +17,10 @@ import {
 } from "@/lib/server/auth/jwt";
 import { getSession } from "@/lib/server/auth/session";
 import { apiError, readJson, requireSession } from "@/lib/server/http";
+import {
+  createBookingCheckout,
+  isPaymentsEnabled,
+} from "@/lib/server/payments/stripe";
 import { checkRateLimit, getClientIp } from "@/lib/server/rate-limit";
 
 const createBookingInput = z.object({
@@ -97,8 +101,27 @@ export async function POST(request: Request, { params }: RouteContext) {
       await sendMagicLinkEmail(guest.email, verifyUrl.toString());
     }
 
+    // Com o Stripe configurado, o pedido segue para o checkout: o cartão é
+    // autorizado agora e cobrado só na aprovação do gestor (fluxo Airbnb).
+    let checkoutUrl: string | null = null;
+    if (isPaymentsEnabled() && booking.totalPrice) {
+      checkoutUrl = await createBookingCheckout({
+        bookingId: booking.id,
+        propertyId: id,
+        totalPrice: booking.totalPrice,
+        guestEmail: guest.email,
+        checkIn: booking.checkIn,
+        checkOut: booking.checkOut,
+        origin: new URL(request.url).origin,
+      });
+    }
+
     return NextResponse.json(
-      { ...booking, authenticated: isNewUser || alreadyAuthenticated },
+      {
+        ...booking,
+        authenticated: isNewUser || alreadyAuthenticated,
+        checkoutUrl,
+      },
       { status: 201 },
     );
   } catch (error) {

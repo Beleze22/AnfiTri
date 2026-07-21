@@ -51,6 +51,18 @@ export default async function SucessoPage({
               Prazo de confirmação: {formatter.format(ownBooking.expiresAt)}
             </p>
           )}
+          {ownBooking.payment?.status === "autorizado" && (
+            <p className="mt-2 rounded-card bg-green-light p-2 text-caption text-green">
+              Cartão autorizado — a cobrança só acontece se o gestor aprovar a
+              reserva. Se recusar ou o prazo vencer, nada é cobrado.
+            </p>
+          )}
+          {ownBooking.payment?.status === "aguardando" && (
+            <p className="mt-2 rounded-card bg-accent-light p-2 text-caption text-accent-dark">
+              Pagamento não concluído — sem ele o pedido expira sozinho e a data
+              volta a ficar disponível.
+            </p>
+          )}
         </div>
       ) : (
         <div className="mt-6 w-full max-w-sm rounded-card border border-border bg-surface p-4 text-left">

@@ -35,6 +35,18 @@ enum ConversationStatus {
   encerrada
 }
 
+// Ciclo espelha o fluxo "à la Airbnb" com captura manual do Stripe:
+// aguardando (checkout criado, hóspede não concluiu) → autorizado (cartão
+// retido, sem cobrança) → pago (capturado na aprovação do gestor).
+// cancelado cobre retenção liberada e estorno.
+enum PaymentStatus {
+  aguardando
+  autorizado
+  pago
+  cancelado
+  falhou
+}
+
 // Configurações globais do sistema — chave/valor em JSON. Usado para
 // categorias dinâmicas de hospedagem (gerenciadas pelo gestor em
 // Configurações) em vez de um enum fixo no schema.
@@ -104,6 +116,7 @@ model Booking {
   createdAt  DateTime      @default(now()) @map("created_at")
 
   conversation Conversation?
+  payment      Payment?
 
   // (property_id, status) cobre toda checagem de disponibilidade/overlap;
   // user_id cobre "minhas reservas" do hóspede.
@@ -207,6 +220,24 @@ model Message {
 
   @@index([conversationId, read])
   @@map("messages")
+}
+
+// Pagamento 1-para-1 com a reserva (só reservas do site; manual/Airbnb não
+// passam por aqui). Existe apenas quando o Stripe está configurado
+// (STRIPE_SECRET_KEY) — sem a flag, o fluxo de reserva segue sem pagamento.
+model Payment {
+  id                String        @id @default(cuid())
+  bookingId         String        @unique @map("booking_id")
+  booking           Booking       @relation(fields: [bookingId], references: [id])
+  provider          String        @default("stripe")
+  checkoutSessionId String?       @unique @map("checkout_session_id")
+  paymentIntentId   String?       @unique @map("payment_intent_id")
+  amount            Decimal       @db.Decimal(10, 2)
+  status            PaymentStatus @default(aguardando)
+  createdAt         DateTime      @default(now()) @map("created_at")
+  updatedAt         DateTime      @updatedAt @map("updated_at")
+
+  @@map("payments")
 }
 
 // Contadores de rate limiting em janela fixa — key = "escopo:identificador:

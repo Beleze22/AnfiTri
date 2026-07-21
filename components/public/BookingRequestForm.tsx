@@ -46,6 +46,12 @@ export function BookingRequestForm({
     }
 
     const booking = await response.json();
+    if (booking.checkoutUrl) {
+      // Pagamento ativo: autoriza o cartão agora; a cobrança só acontece
+      // quando o gestor aprovar. O Stripe redireciona de volta ao sucesso.
+      window.location.assign(booking.checkoutUrl);
+      return;
+    }
     router.push(`/reservas/sucesso?bookingId=${booking.id}`);
   }
 

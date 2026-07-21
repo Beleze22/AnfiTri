@@ -33,6 +33,8 @@ Copiar os valores do `.env.local`, com duas exceções marcadas:
 | `GMAIL_CLIENT_SECRET`       | igual ao `.env.local`                                                  |
 | `GMAIL_REFRESH_TOKEN`       | igual ao `.env.local`                                                  |
 | `GMAIL_USER`                | igual ao `.env.local`                                                  |
+| `STRIPE_SECRET_KEY`         | **opcional** — liga o pagamento (ver seção Pagamentos)                 |
+| `STRIPE_WEBHOOK_SECRET`     | **opcional** — assinatura do webhook do Stripe                         |
 
 Trocar o `JWT_SECRET` invalida sessões antigas (ninguém tem sessão em
 produção ainda — sem efeito). O banco é o mesmo do desenvolvimento por
@@ -66,6 +68,31 @@ cron-job.org: 200 = ok).
 - [ ] Pedir magic link (`/perfil`) para esse e-mail → chega e-mail real e o
       link loga.
 - [ ] Execuções dos 3 jobs no cron-job.org retornando 200.
+
+## Pagamentos (Stripe) — desligado por padrão
+
+Sem `STRIPE_SECRET_KEY`, o fluxo de reserva funciona sem pagamento (como na
+demo). Com a chave configurada, o pedido passa pelo checkout: o cartão do
+hóspede é **autorizado na solicitação** e **cobrado só quando o gestor
+aprova** (captura manual — mesmo modelo do Airbnb). Recusa/expiração libera
+a retenção; cancelamento de reserva paga faz estorno integral.
+
+Para ativar:
+
+1. Conta em [stripe.com](https://stripe.com) (modo teste funciona na hora;
+   o onboarding do CNPJ do gestor é necessário só para dinheiro real).
+2. `STRIPE_SECRET_KEY` = chave secreta (`sk_test_...` para testes).
+3. Dashboard → Developers → Webhooks → Add endpoint:
+   `https://<app>.vercel.app/api/webhooks/stripe`, eventos
+   `checkout.session.completed` e `checkout.session.expired` →
+   copiar o signing secret para `STRIPE_WEBHOOK_SECRET`.
+4. Redeploy. Teste com o cartão `4242 4242 4242 4242` (qualquer validade
+   futura/CVC).
+5. Local: `stripe listen --forward-to localhost:3000/api/webhooks/stripe`
+   (CLI do Stripe) e usar o secret que o comando imprime.
+
+PIX fica para uma fase 2 (não suporta autorizar-sem-cobrar; exigirá fluxo
+de estorno na recusa).
 
 ## O que pode ser trocado depois (sem novo deploy de código)
 
