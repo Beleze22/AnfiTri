@@ -1,10 +1,12 @@
 # Plataforma de agendamentos para hospedagens — arquitetura e escopo
 
 > Documento de referência da fase de arquitetura/escopo. Consolida as decisões tomadas antes de qualquer linha de código, para servir de base ao design (UI/UX) e à implementação — inclusive como input para o Claude Code.
+>
+> **Revisado em 31/08/2026** para refletir o sistema em produção. As decisões da fase de arquitetura foram preservadas; onde a implementação divergiu, o texto diz o que mudou e por quê, e a seção 10 registra cada mudança com data. Trechos marcados como *(decisão original)* descrevem o que se pensava antes e ficaram no documento porque explicam escolhas que ainda estão no código.
 
 ## 1. Objetivo do projeto
 
-Construir uma plataforma própria para gerenciar e divulgar hospedagens (2 a 10 imóveis, uso próprio do gestor/proprietário), com:
+Construir uma plataforma própria para gerenciar e divulgar hospedagens (2 a 10 imóveis), com:
 
 - Vitrine pública de cada hospedagem (fotos, descrição, comodidades).
 - Calendário de disponibilidade sincronizado com o Airbnb nas duas direções.
@@ -16,8 +18,8 @@ Construir uma plataforma própria para gerenciar e divulgar hospedagens (2 a 10 
 
 | Aspecto | Decisão |
 |---|---|
-| Escala | 2 a 10 hospedagens, uso próprio (não é um SaaS multi-host) |
-| Pagamento no MVP | Não. Modelo de dados já preparado para adicionar depois sem retrabalho |
+| Escala | 2 a 10 hospedagens. *(decisão original: uso próprio do gestor, "não é um SaaS multi-host")* — desde 31/08/2026 o gestor administra imóveis de **terceiros**, e cada proprietário tem acesso somente leitura aos relatórios dos próprios imóveis. Continua não sendo um SaaS: há um gestor, com vários donos abaixo dele. Ver seções 4.1 e 8.3 |
+| Pagamento | *(decisão original: fora do MVP)* — implementado em 21/07/2026 atrás de feature flag. Sem `STRIPE_SECRET_KEY` o fluxo de reserva roda sem cobrança, e esse caminho precisa continuar funcionando |
 | Mobile | Web responsivo mobile-first agora. Backend desenhado como API separada da interface, para permitir app nativo/React Native no futuro sem reescrever lógica de negócio |
 | Público do mobile futuro | Hóspedes também (não só o gestor) |
 
@@ -50,9 +52,14 @@ Como o usuário é o próprio proprietário das hospedagens no Airbnb, usamos o 
 
 **Camada de backup:** o sistema também importa periodicamente o iCal oficial gerado pelo próprio Airbnb e compara com o banco de dados local, para detectar reservas que o parser de e-mail eventualmente não capturou (e-mail não entregue, mudança de formato, etc).
 
-**Limitação assumida no MVP — cancelamentos no Airbnb:** o parser de e-mail trata apenas confirmações de novas reservas. Um cancelamento feito pelo hóspede ou pelo Airbnb **não** é detectado automaticamente; o booking permanece `confirmado` no sistema até o gestor notar a divergência e cancelar manualmente pelo painel. A camada de backup (iCal reverso) ajuda nisso de forma indireta: se uma data antes bloqueada no iCal do Airbnb volta a aparecer livre, é um sinal de possível cancelamento que o gestor deve investigar. Automatizar esse cruzamento fica como melhoria futura, fora do MVP.
+**Cancelamentos e alterações no Airbnb** *(decisão original: não detectados, melhoria futura fora do MVP)* — resolvido em 31/08/2026, por dois caminhos com graus de confiança diferentes:
 
-**Regra importante:** somente bookings com `status = confirmado` são exportados no feed iCal para o Airbnb. Bookings `pendente` bloqueiam o calendário dentro da própria plataforma, mas não são propagados ao Airbnb — evita bloquear uma data por algo que pode expirar em poucas horas.
+- **Pelo e-mail de cancelamento:** o Airbnb afirma o cancelamento e identifica a reserva pelo código de confirmação. Sinal explícito e específico, então a reserva é cancelada automaticamente, com um alerta registrando o que a ferramenta fez.
+- **Pelo diff do iCal:** o sync horário compara os dias ocupados do feed com as reservas confirmadas aqui. Este caminho **não** cancela nada sozinho — ele infere por ausência de dado, e um feed que falhou, veio vazio ou truncado é indistinguível de "tudo foi cancelado". Abre um alerta para o gestor decidir.
+
+Um **pedido de alteração de datas** também só gera alerta: o e-mail do Airbnb diz "se você aceitar, vamos atualizar sua reserva" — é pedido, não fato consumado.
+
+**Regra importante:** somente bookings com `status = confirmado` **e origem `site` ou `manual`** são exportados no feed iCal para o Airbnb. Devolver ao Airbnb as reservas vindas dele é redundante e cria um laço: se o hóspede cancelasse lá, a reserva do Airbnb sumiria mas o nosso bloqueio permaneceria, e a data nunca seria liberada. Bookings `pendente` bloqueiam o calendário dentro da própria plataforma, mas não são propagados ao Airbnb — evita bloquear uma data por algo que pode expirar em poucas horas.
 
 ### 3.4 Autenticação
 
@@ -73,8 +80,11 @@ Como o usuário é o próprio proprietário das hospedagens no Airbnb, usamos o 
 ### 4.1 Entidades principais
 
 **Property** (hospedagem)
-- `id`, `title`, `slug`, `description`, `max_guests`, `bedrooms`, `base_price`
+- `id`, `title`, `slug`, `description`, `location`, `category`, `max_guests`, `bedrooms`, `base_price`
 - `airbnb_ical_url` — URL do calendário oficial do Airbnb, usada na camada de backup
+- `airbnb_synced_at` — última leitura bem-sucedida desse calendário
+- `owner_id` — proprietário do imóvel. Nulo significa imóvel do próprio gestor
+- `management_fee_percent` — comissão de administração, percentual sobre o valor recebido. Por imóvel porque é negociada caso a caso. Nulo = não configurada, e o relatório avisa em vez de assumir zero
 - `status`
 
 **Photo**
@@ -87,7 +97,11 @@ Como o usuário é o próprio proprietário das hospedagens no Airbnb, usamos o 
 - `status` — `pendente` | `confirmado` | `cancelado` | `expirado`
 - `airbnb_ref` — código da reserva extraído do e-mail, evita duplicidade
 - `expires_at` — calculado apenas quando `source = site` e `status = pendente` (ver seção 6)
-- `total_price`
+- `total_price` — **bruto**: o que o hóspede paga
+- `platform_fee` — retenção da plataforma (taxa de serviço do Airbnb, ou do meio de pagamento)
+- `net_amount` — o que efetivamente chega ao gestor
+
+> Os três valores existem separados porque o Airbnb retém mais de 18%: um relatório que só olha o bruto dá a impressão errada de quanto entrou. Reservas do Airbnb têm os três lidos do e-mail de confirmação, que traz o desdobramento completo.
 
 **PriceRule**
 - `id`, `property_id`, `rule_type`, `start_date`, `end_date`, `multiplier`
@@ -96,8 +110,22 @@ Como o usuário é o próprio proprietário das hospedagens no Airbnb, usamos o 
 - `id`, `property_id`, `name`, `icon`
 
 **User**
-- `id`, `name`, `email`, `password_hash` (apenas para `role = gestor`), `role` (`gestor` | `hospede`)
+- `id`, `name`, `email`, `phone`, `password_hash` (apenas para `role = gestor`), `role` (`gestor` | `hospede` | `proprietario`)
 - Campos de configuração do gestor (ver seção 6.2): `default_expiry_hours`, `quiet_hours_start`, `quiet_hours_end`, `grace_period_hours`
+
+> `proprietario` foi acrescentado em 31/08/2026. É o dono que terceiriza a administração: acesso somente leitura, restrito aos relatórios dos imóveis vinculados a ele. Entra por magic link, como o hóspede — acesso ocasional a relatório não justifica gerir senha, nem o gestor distribuir credencial.
+
+**Alert** (alerta de integração)
+- `id`, `kind` (`parser_sem_referencia` | `divergencia_airbnb`), `title`, `detail`
+- `booking_id` (opcional), `dedupe_key`, `created_at`, `resolved_at`
+
+> O que os jobs detectam e não podem decidir sozinhos. Nasceu de duas necessidades que são a mesma pergunta: o parser recebeu algo que parece reserva mas não conseguiu identificar, e o calendário do Airbnb deixou de listar uma reserva que temos como confirmada. `dedupe_key` impede que o mesmo problema gere alerta novo a cada execução do cron.
+
+**Payment** (pagamento, quando o Stripe está configurado)
+- `id`, `booking_id`, `provider`, `checkout_session_id`, `payment_intent_id`, `amount`
+- `status` (`aguardando` | `autorizado` | `pago` | `cancelado` | `falhou`)
+
+> Captura manual "à la Airbnb": o cartão é autorizado na solicitação e cobrado só quando o gestor aprova.
 
 **Conversation**
 - `id`, `booking_id`, `status`
@@ -181,7 +209,21 @@ Cada `Booking` pode ter uma `Conversation` associada, contendo várias `Message`
 - **Calendário e bookings** — visão consolidada de todas as reservas (de todas as origens), ações de confirmar/cancelar.
 - **Inbox de mensagens** — conversas organizadas por booking.
 - **Regras de preço** — cadastro de `PriceRule` por hospedagem.
-- **Configurações** — `default_expiry_hours`, `quiet_hours_start/end`, `grace_period_hours`.
+- **Configurações** — `default_expiry_hours`, `quiet_hours_start/end`, `grace_period_hours`, e as categorias da vitrine.
+- **Faturamento** — bruto, taxas e recebido lado a lado, com filtro por período e por hospedagem, ocupação e evolução de 12 meses.
+- **Alertas** — o que a sincronização detectou e precisa de decisão humana.
+- **Proprietários** — cadastro dos donos e vínculo com as hospedagens.
+
+Além disso: **reserva manual** lançada pelo gestor (telefone, WhatsApp), a partir do Calendário.
+
+### 8.3 Área do proprietário (login obrigatório, somente leitura)
+
+Acrescentada em 31/08/2026. O dono que terceiriza a administração acompanha os próprios imóveis, sem nenhuma ação de escrita.
+
+- **Desempenho** — a cascata até o repasse dele: receita das reservas, menos taxa da plataforma, menos comissão de administração. Com ocupação e evolução mensal.
+- **Ocupação** — quais dias de cada imóvel dele estão comprometidos, e quanto cada estadia rende.
+
+**O que ele não vê:** nome, e-mail ou telefone do hóspede — quem reservou contratou com o gestor, não com o dono. E nunca o faturamento de imóvel alheio: o filtro por proprietário vem da sessão, nunca de parâmetro da requisição.
 
 ## 9. Stack técnica sugerida
 
@@ -211,17 +253,33 @@ Cada `Booking` pode ter uma `Conversation` associada, contendo várias `Message`
 9. Expiração de pendentes configurável (prazo padrão + janela de silêncio + margem de tolerância), não fixa em código.
 10. Apenas bookings confirmados são exportados ao Airbnb via iCal — pendentes ficam só na plataforma.
 11. Autenticação do gestor via e-mail e senha (simples, já que há um único gestor no MVP).
-12. Cancelamentos de reserva feitos no Airbnb não são detectados automaticamente — gestor cancela manualmente no painel ao notar a divergência; melhoria futura fora do MVP.
+12. Cancelamentos de reserva feitos no Airbnb não são detectados automaticamente — gestor cancela manualmente no painel ao notar a divergência; melhoria futura fora do MVP. **Revertida em 31/08/2026, ver 19.**
 
-## 11. Pendências para a fase de implementação
+### Decisões tomadas durante a implementação
 
-Itens que ainda não foram decididos e devem ser resolvidos no início da implementação (ou conforme surgirem, sem bloquear o início):
+13. **Categorias da vitrine são dinâmicas** (JSON em `SystemConfig`), não um enum fixo — o gestor as edita em Configurações sem precisar de migration. *(resolve a pendência da seção 11)*
+14. **Storage de fotos: Supabase Storage.** Só JPG, PNG e WebP; SVG é barrado de propósito, porque pode carregar script e o bucket é público. *(resolve a pendência da seção 11)*
+15. **Hóspede entra por magic link** por e-mail, token de uso único com 15 minutos de validade. Uma reserva feita com e-mail já cadastrado nunca sobrescreve dados nem concede sessão — senão bastaria conhecer o e-mail de alguém para assumir a conta. *(resolve a pendência da seção 11)*
+16. **Pagamento com captura manual** (21/07/2026), atrás de feature flag: cartão autorizado na solicitação, cobrado quando o gestor aprova, retenção liberada em recusa ou expiração, estorno no cancelamento.
+17. **O feed iCal exporta só reservas de origem `site` e `manual`** (31/08/2026). Devolver ao Airbnb o que veio dele criava um laço em que a data nunca era liberada após cancelamento.
+18. **Falha de integração vira alerta no painel, não log** (31/08/2026). Antes, e-mail que o parser não entendia entrava num array devolvido no JSON do cron que ninguém lia: o job respondia 200 e a integração podia estar quebrada há dias sem nenhum sinal.
+19. **Cancelamento do Airbnb é detectado** (31/08/2026), revertendo a decisão 12. Por e-mail, cancela automaticamente — o Airbnb afirma o fato e identifica a reserva pelo código. Por diff de iCal, apenas alerta — inferir cancelamento de ausência de dado confundiria feed quebrado com cancelamento em massa.
+20. **Reserva do Airbnb sem código de confirmação não é criada** (31/08/2026). O código é a chave de deduplicação; sem ele, a janela de 3 dias da busca no Gmail recriaria a mesma reserva a cada execução do cron. O gestor recebe alerta em vez de reserva silenciosamente duplicada.
+21. **Bruto, taxa da plataforma e líquido são guardados separados** (31/08/2026), lidos do e-mail de confirmação do Airbnb. Antes as reservas do Airbnb entravam com valor nulo e sumiam de qualquer relatório.
+22. **O gestor administra imóveis de terceiros** (31/08/2026), alterando a premissa da seção 2. Papel `proprietario` com acesso somente leitura aos próprios imóveis, e comissão de administração por imóvel. A receita é atribuída ao mês do check-in; a ocupação conta as noites dentro do período, recortando estadias que atravessam a borda — critérios diferentes de propósito, porque somar receita de fora do mês e dividir por noites de dentro daria diária média sem sentido.
+23. **Reserva manual pelo gestor** (31/08/2026), para quem fecha por telefone ou WhatsApp. Recusa datas já ocupadas.
 
-- **Storage de fotos:** Supabase Storage ou Cloudflare R2 — escolher um na hora de configurar o projeto.
-- **Categorias/filtros da vitrine:** quais categorias existem (ex: Praia, Montanha) e se isso é um campo livre ou uma lista fixa em `Property`.
-- **Identificação do hóspede sem senha:** mecanismo exato de acesso ao perfil/histórico (ex: link mágico por e-mail, código por WhatsApp) — a decidir durante a implementação da autenticação.
+## 11. Limitações conhecidas
+
+Substitui a lista de pendências da fase de arquitetura, já resolvidas nas decisões 13 a 15.
+
+- **Nenhuma restrição no banco impede reservas sobrepostas.** As três vias de criação usam transação `SERIALIZABLE` com checagem de sobreposição, mas a defesa é toda aplicacional: um caminho de escrita novo que esqueça de se proteger reabre o problema.
+- **O calendário do Airbnb pode demorar até 12 horas** para refletir o que publicamos, e nenhuma das duas plataformas avisa se um feed parar de funcionar. Falha de leitura do nosso lado virou alerta; do lado do Airbnb, não há como saber.
+- **Taxa do meio de pagamento não é apurada.** Reservas do site aparecem com taxa zero, o que é correto enquanto o Stripe está desligado. Quando ligar, o valor real está na `balance_transaction` e precisa ser buscado na captura.
+- **Reservas anteriores a 31/08/2026 não têm desdobramento financeiro** e entram como zero nos relatórios, com aviso na tela.
+- **Um único banco atende desenvolvimento e produção.** Separar é pré-requisito antes de haver hóspede real.
 
 ## 12. Próximos passos
 
-- Fase de design (UI/UX): layout de cada página listada na seção 8, com atenção especial à vitrine e ao calendário.
-- Fase de implementação.
+- Separar ambientes de desenvolvimento e produção, incluindo conta de e-mail própria para cada um.
+- Cadastrar as URLs de iCal dos anúncios reais e o e-mail do gestor que recebe as confirmações do Airbnb.

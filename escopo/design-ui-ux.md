@@ -1,5 +1,7 @@
 # Plataforma de agendamentos para hospedagens — design e UI/UX
 
+> **Revisado em 31/08/2026** para refletir as telas em produção. Onde a implementação divergiu da especificação original, o texto diz o que mudou e por quê.
+>
 > Documento de referência da fase de design. Consolida o design system (tokens, componentes, padrões de interação) e a especificação de cada tela definida na fase de arquitetura. Serve como input direto para implementação (incluindo via Claude Code) — todos os valores aqui (cores, espaçamentos, nomes de componentes) devem ser usados literalmente no código, não como sugestão aproximada.
 
 ## 1. Princípios de design
@@ -66,7 +68,8 @@ Estes padrões aparecem em mais de uma tela e devem ser implementados como **com
 - Desliza da direita, ~340px de largura, com overlay escurecendo o restante da tela (`rgba(39,39,39,0.25)`).
 - Conteúdo do painel **se adapta à origem/status da reserva**:
   - Reserva `pendente` (origem `site`/`manual`): mostra dados de contato do hóspede (nome, telefone, e-mail), botão de atalho para WhatsApp, botão "Ver conversa" (leva ao inbox), e ações **Confirmar reserva** / **Cancelar** no final.
-  - Reserva `confirmado` com origem `airbnb`: mostra apenas a informação de origem ("Reservado direto no Airbnb") e um aviso de que a comunicação acontece pelo próprio Airbnb — **sem** botões de contato direto nem de confirmar/cancelar (não fazem sentido nesse caso).
+  - Reserva `confirmado` com origem `airbnb`: mostra a informação de origem ("Reservado direto no Airbnb") e um aviso de que a comunicação acontece pelo próprio Airbnb, sem botões de contato direto.
+    - **Divergência (31/08/2026):** a especificação original não previa ação nenhuma aqui, por entender que confirmar ou cancelar "não faz sentido" numa reserva do Airbnb. Isso deixava sem saída dois casos reais: registro errado criado pelo parser, e reserva que o Airbnb cancelou. Existe agora uma ação **Descartar registro**, discreta e com confirmação, cujo texto explica que a remoção vale só aqui — nosso calendário bloqueia datas no Airbnb, nunca cancela reserva de lá.
   - Reserva `confirmado` com origem `site`/`manual`: mostra contato + opção de cancelar (sem botão de confirmar, já que já está confirmada).
 
 ### 3.2 Código de cores de status (global)
@@ -110,7 +113,8 @@ Aplicado de forma idêntica em badges, bolinhas de status e bordas de card, em q
 ### 3.7 Sidebar (área do gestor, desktop)
 
 - Fixa à esquerda, ~200px de largura.
-- Itens: Dashboard, Hospedagens, Calendário, Mensagens, Regras de preço, Configurações — ícone + label, item ativo com fundo `--color-accent-light` e borda à direita em `--color-accent`.
+- Itens: Dashboard, Hospedagens, Calendário, Mensagens, Regras de preço, **Faturamento**, **Proprietários**, **Alertas**, Configurações — ícone + label, item ativo com fundo `--color-accent-light` e borda à direita em `--color-accent`.
+- Dois indicadores no menu: bolinha coral em Mensagens quando há não lidas, e **contador em âmbar** em Alertas. São informações diferentes — "algo chegou" contra "há N coisas para resolver" —, por isso um é ponto e o outro é número.
 - Identificação do usuário logado fixada na base da sidebar.
 
 ## 4. Especificação por tela
@@ -220,3 +224,37 @@ Aplicado de forma idêntica em badges, bolinhas de status e bordas de card, em q
 
 - Fase de implementação: este documento, em conjunto com `arquitetura-e-escopo.md`, serve de input para o desenvolvimento (Claude Code).
 - Recomenda-se implementar primeiro os tokens de design (seção 2) e os componentes reutilizáveis (seção 3) como base, antes das telas individuais (seção 4), para evitar duplicação de lógica visual.
+
+---
+
+## 6. Telas acrescentadas depois da fase de design
+
+Especificadas durante a implementação, seguindo os mesmos tokens e padrões das seções 2 e 3.
+
+### 6.1 Faturamento (gestor)
+
+Filtros no topo: atalhos de período (Este mês, Mês passado, Últimos 3 meses, Este ano), intervalo livre com dois campos de data, e seletor de hospedagem.
+
+Cinco cartões: **Recebido** em destaque com fundo `accent-light`, Bruto, Taxas das plataformas, Diária média e Ocupação. Abaixo, tabelas por hospedagem e por origem, e um gráfico de barras dos últimos 12 meses.
+
+A quebra por origem é a informação mais útil da tela: mostra lado a lado quanto sobra de cada canal, que é o argumento para o gestor priorizar a reserva direta.
+
+### 6.2 Alertas (gestor)
+
+Lista de cartões, cada um com ícone por tipo (âmbar para falha de leitura de e-mail, azul para divergência do Airbnb), o que aconteceu, a reserva envolvida quando existe, e "Marcar como resolvido".
+
+Resolver o alerta **não** mexe na reserva — são ações separadas de propósito. Estado vazio com marca de verificação verde: "Nenhum alerta em aberto".
+
+### 6.3 Proprietários (gestor)
+
+Um cartão por dono: nome, contato, e a lista de hospedagens vinculadas com etiqueta de percentual — verde quando configurado, âmbar quando não. Lápis abre o painel de edição **abaixo da lista**, para que o × de desvincular fique visível junto do nome de cada imóvel.
+
+### 6.4 Área do proprietário
+
+Navegação horizontal enxuta, não sidebar: são duas telas e nenhuma ação de escrita, e uma sidebar como a do gestor sugeriria um painel de gerenciamento que ele não tem.
+
+**Desempenho.** O número em destaque é o **repasse** — o que cai na conta dele —, não o "recebido" que o gestor vê, que ainda tem a comissão dentro. Uma tabela em cascata explica como se chega lá: receita, menos taxa da plataforma, menos comissão de administração.
+
+**Ocupação.** Grade de um mês, um imóvel por linha, com largura de coluna fixa para que os dias de 1 a 9 não fiquem mais estreitos que os de 10 a 31. Verde é ocupado, cinza é livre, e a coluna do dia atual recebe destaque. O balão de detalhe aparece no hover com período, origem e o repasse daquela estadia — posicionado por coordenadas de viewport para não ser cortado pela rolagem horizontal.
+
+Em nenhuma das duas telas aparece nome, e-mail ou telefone do hóspede.
