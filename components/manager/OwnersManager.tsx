@@ -240,16 +240,6 @@ export function OwnersManager() {
                 </div>
               </div>
 
-              {editando === d.id && (
-                <EditarDono
-                  dono={d}
-                  imoveis={imoveisLivres}
-                  onSalvar={(dados) => salvarDados(d.id, dados)}
-                  onVincular={(propertyId) => vincular(propertyId, d.id)}
-                  onCancelar={() => setEditando(null)}
-                />
-              )}
-
               {d.imoveis.length === 0 ? (
                 <p className="mt-2 text-caption text-text-secondary">
                   Nenhuma hospedagem vinculada — ele ainda não vê nada ao
@@ -287,6 +277,19 @@ export function OwnersManager() {
                     </li>
                   ))}
                 </ul>
+              )}
+
+              {/* O painel de edição abre por ÚLTIMO, depois da lista: aberto
+                  entre o cabeçalho e as hospedagens, ele empurrava a lista
+                  para baixo e o × de desvincular ficava longe do contexto. */}
+              {editando === d.id && (
+                <EditarDono
+                  dono={d}
+                  imoveis={imoveisLivres}
+                  onSalvar={(dados) => salvarDados(d.id, dados)}
+                  onVincular={(propertyId) => vincular(propertyId, d.id)}
+                  onCancelar={() => setEditando(null)}
+                />
               )}
             </article>
           ))}
