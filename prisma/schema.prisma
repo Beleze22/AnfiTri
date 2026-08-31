@@ -112,11 +112,20 @@ model Booking {
   status     BookingStatus
   airbnbRef  String?       @unique @map("airbnb_ref")
   expiresAt  DateTime?     @map("expires_at")
-  totalPrice Decimal?      @map("total_price") @db.Decimal(10, 2)
-  createdAt  DateTime      @default(now()) @map("created_at")
+  // totalPrice é o BRUTO: o que o hóspede paga. As duas colunas abaixo
+  // separam o que a plataforma retém do que o gestor efetivamente recebe —
+  // no Airbnb a taxa de serviço do anfitrião passa de 18%, então relatório
+  // que só olha o bruto superestima a receita.
+  // Nulo = desconhecido, não zero: reserva do site sem Stripe configurado
+  // não tem taxa a apurar, e o relatório trata nulo como sem retenção.
+  totalPrice  Decimal?     @map("total_price") @db.Decimal(10, 2)
+  platformFee Decimal?     @map("platform_fee") @db.Decimal(10, 2)
+  netAmount   Decimal?     @map("net_amount") @db.Decimal(10, 2)
+  createdAt   DateTime     @default(now()) @map("created_at")
 
   conversation Conversation?
   payment      Payment?
+  alerts       Alert[]
 
   // (property_id, status) cobre toda checagem de disponibilidade/overlap;
   // user_id cobre "minhas reservas" do hóspede.
@@ -238,6 +247,36 @@ model Payment {
   updatedAt         DateTime      @updatedAt @map("updated_at")
 
   @@map("payments")
+}
+
+// Coisas que exigem atenção humana e que nenhum job pode resolver sozinho.
+// Nasceu de duas necessidades que são a mesma pergunta: o parser recebeu algo
+// que parece reserva mas não conseguiu identificar, e o calendário do Airbnb
+// deixou de listar uma reserva que temos como confirmada. Nos dois casos a
+// decisão é do gestor — automatizar seria apagar ou inventar reserva com base
+// em sinal incerto.
+enum AlertKind {
+  parser_sem_referencia
+  divergencia_airbnb
+}
+
+model Alert {
+  id         String    @id @default(cuid())
+  kind       AlertKind
+  title      String
+  detail     String    @db.Text
+  bookingId  String?   @map("booking_id")
+  booking    Booking?  @relation(fields: [bookingId], references: [id])
+  // Identifica a causa (id da mensagem no Gmail, id da reserva) para o mesmo
+  // problema não gerar um alerta novo a cada execução do cron.
+  dedupeKey  String?   @map("dedupe_key")
+  createdAt  DateTime  @default(now()) @map("created_at")
+  resolvedAt DateTime? @map("resolved_at")
+
+  // O painel lista sempre os não resolvidos; o índice cobre essa varredura.
+  @@index([resolvedAt])
+  @@index([dedupeKey, resolvedAt])
+  @@map("alerts")
 }
 
 // Contadores de rate limiting em janela fixa — key = "escopo:identificador:
