@@ -51,6 +51,16 @@ export default async function SucessoPage({
               Prazo de confirmação: {formatter.format(ownBooking.expiresAt)}
             </p>
           )}
+          {/* O hóspede não tem nenhuma ação pendente daqui em diante — dizer
+              isso explicitamente evita que ele fique esperando um passo que
+              não existe, ou tente refazer o pedido achando que faltou algo. */}
+          <p className="mt-3 text-caption text-text-secondary">
+            As datas já estão guardadas para você.{" "}
+            <strong className="text-text-primary">
+              Não é preciso fazer mais nada
+            </strong>{" "}
+            — enviamos um e-mail assim que a reserva for confirmada.
+          </p>
           {ownBooking.payment?.status === "autorizado" && (
             <p className="mt-2 rounded-card bg-green-light p-2 text-caption text-green">
               Cartão autorizado — a cobrança só acontece se o gestor aprovar a

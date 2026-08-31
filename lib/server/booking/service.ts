@@ -3,6 +3,11 @@ import { Prisma } from "@prisma/client";
 import { prisma } from "@/lib/db/client";
 import { calculateExpiresAt } from "@/lib/server/booking/expiry";
 import {
+  avisarReservaCancelada,
+  avisarReservaConfirmada,
+  avisarReservaExpirada,
+} from "@/lib/server/notifications/booking-email";
+import {
   captureBookingPayment,
   releaseBookingPayment,
 } from "@/lib/server/payments/stripe";
@@ -241,16 +246,43 @@ export async function confirmBooking(id: string) {
     );
   }
 
-  const result = await prisma.booking.updateMany({
-    where: {
-      id,
-      status: "pendente",
-      // Pendente já vencida não pode ser confirmada, mesmo que o job de
-      // expiração (a cada 15 min) ainda não a tenha varrido.
-      OR: [{ expiresAt: null }, { expiresAt: { gt: new Date() } }],
+  // A disponibilidade é revalidada AQUI dentro, não só na criação: uma
+  // reserva do Airbnb pode ter nascido sobre esta data no intervalo entre o
+  // pedido e a aprovação, e confirmar assim deixaria duas reservas firmes
+  // para as mesmas noites — as duas exportadas no feed.
+  const result = await prisma.$transaction(
+    async (tx) => {
+      const conflito = await tx.booking.findFirst({
+        where: {
+          propertyId: withPayment.propertyId,
+          id: { not: id },
+          // Só reserva já firme impede: outra pendente na mesma data é
+          // justamente o que o gestor está resolvendo ao escolher esta.
+          status: "confirmado",
+          checkIn: { lt: withPayment.checkOut },
+          checkOut: { gt: withPayment.checkIn },
+        },
+        select: { id: true },
+      });
+      if (conflito) {
+        throw new BookingConflictError(
+          "Essas datas já têm outra reserva confirmada.",
+        );
+      }
+
+      return tx.booking.updateMany({
+        where: {
+          id,
+          status: "pendente",
+          // Pendente já vencida não pode ser confirmada, mesmo que o job de
+          // expiração (a cada 15 min) ainda não a tenha varrido.
+          OR: [{ expiresAt: null }, { expiresAt: { gt: new Date() } }],
+        },
+        data: { status: "confirmado" },
+      });
     },
-    data: { status: "confirmado" },
-  });
+    { isolationLevel: Prisma.TransactionIsolationLevel.Serializable },
+  );
 
   if (result.count === 0) {
     const booking = await prisma.booking.findUniqueOrThrow({ where: { id } });
@@ -275,6 +307,10 @@ export async function confirmBooking(id: string) {
     }
   }
 
+  // Depois da captura: um aviso de "confirmada" seguido de falha na cobrança
+  // deixaria o hóspede com a informação errada.
+  await avisarReservaConfirmada(id);
+
   return prisma.booking.findUniqueOrThrow({ where: { id } });
 }
 
@@ -294,6 +330,7 @@ export async function cancelBooking(id: string) {
   // Devolve o dinheiro do hóspede: retenção liberada (pendente) ou estorno
   // integral (já confirmada e paga).
   await releaseBookingPayment(id);
+  await avisarReservaCancelada(id);
 
   return prisma.booking.findUniqueOrThrow({ where: { id } });
 }
@@ -347,6 +384,7 @@ export async function expireOverdueBookings() {
     });
     if (result.count === 0) continue;
     expired += 1;
+    await avisarReservaExpirada(id);
 
     try {
       await releaseBookingPayment(id);

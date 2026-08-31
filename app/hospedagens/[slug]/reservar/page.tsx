@@ -4,6 +4,7 @@ import { notFound } from "next/navigation";
 import { BookingRequestForm } from "@/components/public/BookingRequestForm";
 import { getManagerExpiryConfig } from "@/lib/server/booking/service";
 import { getPropertyBySlug } from "@/lib/server/properties/service";
+import { isPaymentsEnabled } from "@/lib/server/payments/stripe";
 import { calculatePriceForStay } from "@/lib/server/pricing/calculate";
 
 export default async function ReservarPage({
@@ -71,6 +72,7 @@ export default async function ReservarPage({
         propertyId={property.id}
         checkIn={checkIn}
         checkOut={checkOut}
+        pagamentoAtivo={isPaymentsEnabled()}
       />
     </main>
   );

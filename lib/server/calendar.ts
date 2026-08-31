@@ -14,7 +14,11 @@ export async function getWeekCalendar(weekStart: Date) {
         where: {
           status: { in: ["pendente", "confirmado"] },
           checkIn: { lt: weekEnd },
-          checkOut: { gt: weekStart },
+          // gte (e não gt): a grade desenha a reserva do meio do dia de
+          // check-in ao meio do dia de check-out, então uma reserva que
+          // termina no primeiro dia da semana ainda ocupa metade dessa
+          // coluna e precisa vir na resposta.
+          checkOut: { gte: weekStart },
         },
         include: { user: true },
       },

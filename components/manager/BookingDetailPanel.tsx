@@ -71,6 +71,7 @@ export function BookingDetailPanel({
 }) {
   const [booking, setBooking] = useState<BookingDetail | null>(null);
   const [actionError, setActionError] = useState<string | null>(null);
+  const [descarteAberto, setDescarteAberto] = useState(false);
 
   useEffect(() => {
     if (!bookingId) return;
@@ -79,6 +80,7 @@ export function BookingDetailPanel({
       .then((data) => {
         setBooking(data);
         setActionError(null);
+        setDescarteAberto(false);
       });
   }, [bookingId]);
 
@@ -151,10 +153,71 @@ export function BookingDetailPanel({
             )}
 
             {isAirbnb ? (
-              <p className="mt-4 rounded-card bg-blue-light p-3 text-body text-blue">
-                Reservado direto no Airbnb. A comunicação com o hóspede acontece
-                pelo próprio Airbnb.
-              </p>
+              <>
+                <p className="mt-4 rounded-card bg-blue-light p-3 text-body text-blue">
+                  Reservado direto no Airbnb. A comunicação com o hóspede
+                  acontece pelo próprio Airbnb.
+                </p>
+
+                {actionError && (
+                  <p className="mt-4 rounded-card bg-accent-light p-3 text-caption text-accent-dark">
+                    {actionError}
+                  </p>
+                )}
+
+                {/* Descartar NÃO cancela nada no Airbnb: o feed .ics só
+                    bloqueia datas lá, nunca cancela uma reserva de lá
+                    (arquitetura, seção 3.2). Serve para corrigir registro
+                    errado — duplicata do parser ou data mal interpretada.
+                    Fica separado do "Cancelar" das reservas do site, que é
+                    ação de negócio, e exige confirmação: a seção 3.1 do design
+                    escondia qualquer ação aqui, o que deixava duplicata sem
+                    saída pela tela. */}
+                {(booking.status === "pendente" ||
+                  booking.status === "confirmado") &&
+                  (descarteAberto ? (
+                    <div className="mt-5 rounded-card border border-border p-3">
+                      <p className="text-caption text-text-secondary">
+                        Isto libera a data{" "}
+                        <strong className="text-text-primary">
+                          apenas aqui
+                        </strong>
+                        . Não cancela nada no Airbnb — nosso calendário só
+                        bloqueia datas lá, nunca cancela reserva.
+                      </p>
+                      <p className="mt-2 text-caption text-text-secondary">
+                        Use quando o Airbnb já cancelou a reserva, ou quando o
+                        registro veio errado da leitura de e-mail. Se a reserva
+                        ainda existe no Airbnb, a data ficará livre aqui e
+                        ocupada lá.
+                      </p>
+                      <div className="mt-3 flex gap-2">
+                        <button
+                          type="button"
+                          onClick={() => handleAction("cancel")}
+                          className="flex-1 rounded-pill bg-accent px-4 py-2.5 text-body font-medium text-accent-text"
+                        >
+                          Descartar
+                        </button>
+                        <button
+                          type="button"
+                          onClick={() => setDescarteAberto(false)}
+                          className="flex-1 rounded-pill border border-border px-4 py-2.5 text-body text-text-primary"
+                        >
+                          Voltar
+                        </button>
+                      </div>
+                    </div>
+                  ) : (
+                    <button
+                      type="button"
+                      onClick={() => setDescarteAberto(true)}
+                      className="mt-5 w-full rounded-pill border border-border px-4 py-2.5 text-body text-text-secondary"
+                    >
+                      Descartar registro
+                    </button>
+                  ))}
+              </>
             ) : (
               <>
                 <div className="mt-4 rounded-card border border-border p-3">
