@@ -1,6 +1,7 @@
 import { beforeEach, describe, expect, it } from "vitest";
 
 import { prisma } from "@/lib/db/client";
+import { calculateExpiresAt } from "@/lib/server/booking/expiry";
 import {
   BookingConflictError,
   InvalidTransitionError,
@@ -21,6 +22,15 @@ const temBanco = Boolean(process.env.TEST_DATABASE_URL);
 
 const dia = (iso: string) => new Date(`${iso}T00:00:00Z`);
 
+// Config de expiração do gestor de teste, compartilhada entre o cenário e as
+// asserções.
+const CONFIG = {
+  defaultExpiryHours: 6,
+  quietHoursStart: new Date("1970-01-01T22:00:00Z"),
+  quietHoursEnd: new Date("1970-01-01T07:00:00Z"),
+  gracePeriodHours: 2,
+};
+
 async function limpar() {
   // CASCADE porque conversation/message/payment/alert pendem de booking.
   await prisma.$executeRawUnsafe(
@@ -36,10 +46,7 @@ async function cenario() {
       name: "Gestor",
       email: "gestor@teste.local",
       role: "gestor",
-      defaultExpiryHours: 6,
-      quietHoursStart: new Date("1970-01-01T22:00:00Z"),
-      quietHoursEnd: new Date("1970-01-01T07:00:00Z"),
-      gracePeriodHours: 2,
+      ...CONFIG,
     },
   });
   const property = await prisma.property.create({
@@ -79,9 +86,18 @@ describe.skipIf(!temBanco)("createSiteBooking", () => {
     expect(booking.totalPrice?.toFixed(2)).toBe("600.00"); // 3 noites × 200
     expect(isNewUser).toBe(true);
 
-    const horas =
-      (booking.expiresAt!.getTime() - booking.createdAt.getTime()) / 3_600_000;
-    expect(horas).toBeCloseTo(6, 1);
+    // Comparar com a função pura, e não com "6 horas" fixas: o prazo passa
+    // pela janela de silêncio, então o intervalo real depende da hora em que
+    // o teste roda. Uma asserção de 6h passa de manhã e falha à tarde — foi
+    // assim que o CI pegou esta versão. O que cabe verificar aqui é que o
+    // serviço aplica a config do gestor; o algoritmo em si tem os próprios
+    // casos em expiry.test.ts.
+    expect(booking.expiresAt).toEqual(
+      calculateExpiresAt(booking.createdAt, CONFIG),
+    );
+    expect(booking.expiresAt!.getTime()).toBeGreaterThan(
+      booking.createdAt.getTime(),
+    );
 
     const conversa = await prisma.conversation.findUnique({
       where: { bookingId: booking.id },
