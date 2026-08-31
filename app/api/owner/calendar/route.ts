@@ -1,6 +1,8 @@
 import { NextResponse } from "next/server";
 import { z } from "zod";
 
+import { Prisma } from "@prisma/client";
+
 import { prisma } from "@/lib/db/client";
 import { apiError, requireSession } from "@/lib/server/http";
 
@@ -40,6 +42,7 @@ export async function GET(request: Request) {
     select: {
       id: true,
       title: true,
+      managementFeePercent: true,
       bookings: {
         where: {
           // Pendente também ocupa a data, mas para o dono a distinção entre
@@ -49,24 +52,49 @@ export async function GET(request: Request) {
           checkIn: { lt: fim },
           checkOut: { gt: inicio },
         },
-        select: { id: true, checkIn: true, checkOut: true, source: true },
+        select: {
+          id: true,
+          checkIn: true,
+          checkOut: true,
+          source: true,
+          status: true,
+          totalPrice: true,
+          platformFee: true,
+          netAmount: true,
+        },
         orderBy: { checkIn: "asc" },
       },
     },
     orderBy: { title: "asc" },
   });
 
+  const ZERO = new Prisma.Decimal(0);
+
   return NextResponse.json({
     mes: parsed.data.mes,
     imoveis: imoveis.map((i) => ({
       id: i.id,
       title: i.title,
-      ocupacoes: i.bookings.map((b) => ({
-        id: b.id,
-        checkIn: b.checkIn.toISOString().slice(0, 10),
-        checkOut: b.checkOut.toISOString().slice(0, 10),
-        origem: b.source === "airbnb" ? "Airbnb" : "Reserva direta",
-      })),
+      ocupacoes: i.bookings.map((b) => {
+        // Mesma cascata do relatório, por reserva: o dono vê no calendário o
+        // valor que aquela estadia rende para ele, não a receita cheia.
+        const bruto = b.totalPrice ?? ZERO;
+        const liquido = b.netAmount ?? bruto.minus(b.platformFee ?? ZERO);
+        const comissao = i.managementFeePercent
+          ? liquido.mul(i.managementFeePercent).div(100)
+          : ZERO;
+
+        return {
+          id: b.id,
+          checkIn: b.checkIn.toISOString().slice(0, 10),
+          checkOut: b.checkOut.toISOString().slice(0, 10),
+          origem: b.source === "airbnb" ? "Airbnb" : "Reserva direta",
+          // Nulo quando o valor ainda não foi apurado — reservas do Airbnb
+          // anteriores à leitura financeira dos e-mails. Melhor a tela dizer
+          // "em apuração" do que exibir zero como se fosse o valor real.
+          repasse: b.totalPrice ? liquido.minus(comissao).toFixed(2) : null,
+        };
+      }),
     })),
   });
 }
