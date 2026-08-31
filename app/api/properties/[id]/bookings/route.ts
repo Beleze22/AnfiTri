@@ -18,6 +18,10 @@ import {
 import { getSession } from "@/lib/server/auth/session";
 import { apiError, readJson, requireSession } from "@/lib/server/http";
 import {
+  avisarGestorNovoPedido,
+  avisarReservaSolicitada,
+} from "@/lib/server/notifications/booking-email";
+import {
   createBookingCheckout,
   isPaymentsEnabled,
 } from "@/lib/server/payments/stripe";
@@ -115,6 +119,12 @@ export async function POST(request: Request, { params }: RouteContext) {
         origin: new URL(request.url).origin,
       });
     }
+
+    // Depois do checkout: com pagamento ativo o hóspede ainda precisa
+    // concluir a autorização, e o aviso já explica que as datas estão
+    // guardadas enquanto o prazo corre.
+    await avisarReservaSolicitada(booking.id);
+    await avisarGestorNovoPedido(booking.id);
 
     return NextResponse.json(
       {

@@ -32,6 +32,16 @@ const updateInput = z.object({
   basePrice: z.coerce.number().positive().optional(),
   airbnbIcalUrl: z.string().url().optional().or(z.literal("")),
   status: z.enum(["rascunho", "publicada", "pausada"]).optional(),
+  // "" desvincula o dono; nulo no banco significa imóvel do próprio gestor.
+  ownerId: z.string().optional(),
+  // Percentual de administração. "" limpa o valor, e o relatório passa a
+  // avisar que a comissão não está configurada em vez de assumir zero.
+  managementFeePercent: z.coerce
+    .number()
+    .min(0)
+    .max(100)
+    .optional()
+    .or(z.literal("")),
 });
 
 export async function PATCH(request: Request, { params }: RouteContext) {
@@ -46,11 +56,20 @@ export async function PATCH(request: Request, { params }: RouteContext) {
     return apiError("invalid_input", "Dados inválidos.", 400);
   }
 
+  const { ownerId, managementFeePercent, ...resto } = parsed.data;
+
   const property = await prisma.property.update({
     where: { id },
     data: {
-      ...parsed.data,
+      ...resto,
       airbnbIcalUrl: parsed.data.airbnbIcalUrl || null,
+      ...(ownerId !== undefined ? { ownerId: ownerId || null } : {}),
+      ...(managementFeePercent !== undefined
+        ? {
+            managementFeePercent:
+              managementFeePercent === "" ? null : managementFeePercent,
+          }
+        : {}),
     },
   });
   return NextResponse.json(property);

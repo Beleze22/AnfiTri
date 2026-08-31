@@ -4,6 +4,7 @@ import { IconChevronLeft, IconChevronRight } from "@tabler/icons-react";
 import { useEffect, useState } from "react";
 
 import { BookingDetailPanel } from "@/components/manager/BookingDetailPanel";
+import { ManualBookingForm } from "@/components/manager/ManualBookingForm";
 import { startOfWeek } from "@/lib/shared/dates";
 
 type WeekBooking = {
@@ -45,11 +46,28 @@ export function ConsolidatedCalendar() {
   const [weekStart, setWeekStart] = useState(() => startOfWeek(new Date()));
   const [properties, setProperties] = useState<WeekProperty[]>([]);
   const [selectedId, setSelectedId] = useState<string | null>(null);
+  const [lancandoReserva, setLancandoReserva] = useState(false);
+
+  // Recarrega a semana sem trocá-la: `new Date(current)` gera outra
+  // referência, o que reexecuta o efeito de busca.
+  const recarregar = () => setWeekStart((current) => new Date(current));
 
   useEffect(() => {
-    fetch(`/api/calendar/week?weekStart=${toKey(weekStart)}`)
+    const requestedWeek = toKey(weekStart);
+    let descartada = false;
+
+    fetch(`/api/calendar/week?weekStart=${requestedWeek}`)
       .then((response) => response.json())
-      .then((data) => setProperties(data.properties));
+      .then((data) => {
+        // Cliques rápidos nas setas disparam vários fetches; sem esta guarda
+        // uma resposta atrasada de outra semana repintaria a grade atual.
+        if (descartada || data.weekStart !== requestedWeek) return;
+        setProperties(data.properties);
+      });
+
+    return () => {
+      descartada = true;
+    };
   }, [weekStart]);
 
   const days = Array.from({ length: 7 }, (_, i) => {
@@ -67,6 +85,13 @@ export function ConsolidatedCalendar() {
           Calendário e bookings
         </h1>
         <div className="flex items-center gap-2">
+          <button
+            type="button"
+            onClick={() => setLancandoReserva(true)}
+            className="rounded-pill bg-accent px-3 py-1.5 text-caption font-medium text-accent-text"
+          >
+            Nova reserva
+          </button>
           <button
             type="button"
             onClick={() => setWeekStart(startOfWeek(new Date()))}
@@ -221,8 +246,16 @@ export function ConsolidatedCalendar() {
       <BookingDetailPanel
         bookingId={selectedId}
         onClose={() => setSelectedId(null)}
-        onChanged={() => setWeekStart((current) => new Date(current))}
+        onChanged={recarregar}
       />
+
+      {lancandoReserva && (
+        <ManualBookingForm
+          properties={properties.map(({ id, title }) => ({ id, title }))}
+          onClose={() => setLancandoReserva(false)}
+          onCreated={recarregar}
+        />
+      )}
     </div>
   );
 }

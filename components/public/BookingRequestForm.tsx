@@ -9,10 +9,12 @@ export function BookingRequestForm({
   propertyId,
   checkIn,
   checkOut,
+  pagamentoAtivo,
 }: {
   propertyId: string;
   checkIn: string;
   checkOut: string;
+  pagamentoAtivo: boolean;
 }) {
   const router = useRouter();
   const [name, setName] = useState("");
@@ -100,10 +102,19 @@ export function BookingRequestForm({
         disabled={loading}
         className="mt-4 w-full rounded-pill bg-accent px-4 py-3 text-body font-medium text-accent-text disabled:opacity-60"
       >
-        {loading ? "Enviando…" : "Solicitar reserva"}
+        {loading
+          ? "Enviando…"
+          : pagamentoAtivo
+            ? "Ir para o pagamento"
+            : "Solicitar reserva"}
       </button>
+      {/* Com o Stripe ligado o próximo passo é o checkout — dizer "sem
+          pagamento agora" ali seria mentira. Sem o Stripe, o texto original
+          continua valendo. */}
       <p className="mt-2 text-center text-caption text-text-secondary">
-        Sem pagamento agora — só confirmamos o interesse.
+        {pagamentoAtivo
+          ? "Seu cartão é apenas autorizado agora. A cobrança só acontece quando o gestor aprovar a reserva."
+          : "Sem pagamento agora — só confirmamos o interesse."}
       </p>
     </form>
   );

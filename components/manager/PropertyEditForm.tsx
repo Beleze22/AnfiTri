@@ -37,6 +37,8 @@ type Property = {
   bedrooms: number;
   basePrice: string;
   status: "rascunho" | "publicada" | "pausada";
+  ownerId: string | null;
+  comissao: string | null;
   airbnbIcalUrl: string | null;
   airbnbSyncedAt: string | null;
   photos: Photo[];
@@ -62,6 +64,20 @@ export function PropertyEditForm({
   const [uploadError, setUploadError] = useState<string | null>(null);
   const [newAmenityName, setNewAmenityName] = useState("");
   const [newAmenityIcon, setNewAmenityIcon] = useState(ICON_SUGGESTIONS[0]);
+  const [donos, setDonos] = useState<{ id: string; name: string }[]>([]);
+
+  useEffect(() => {
+    fetch("/api/manager/owners")
+      .then((r) => r.json())
+      .then((lista) =>
+        setDonos(
+          (Array.isArray(lista) ? lista : []).map(
+            (d: { id: string; name: string }) => ({ id: d.id, name: d.name }),
+          ),
+        ),
+      )
+      .catch(() => {});
+  }, []);
   const fileInputRef = useRef<HTMLInputElement>(null);
 
   useEffect(() => {
@@ -88,6 +104,8 @@ export function PropertyEditForm({
         bedrooms: property.bedrooms,
         basePrice: property.basePrice,
         status: property.status,
+        ownerId: property.ownerId ?? "",
+        managementFeePercent: property.comissao ?? "",
         airbnbIcalUrl: property.airbnbIcalUrl ?? "",
       }),
     });
@@ -376,6 +394,61 @@ export function PropertyEditForm({
               />
             </label>
           </div>
+          {/* Administração: quem é o dono e quanto o gestor retém. Sem dono
+              vinculado o imóvel é tratado como do próprio gestor, que é como
+              todos os cadastrados antes desta tela existem. */}
+          <div className="mt-4 rounded-card border border-border p-3">
+            <p className="text-caption font-medium text-text-primary">
+              Administração
+            </p>
+            <div className="mt-2 flex flex-wrap gap-3">
+              <label className="min-w-52 flex-1 text-caption text-text-secondary">
+                Proprietário
+                <select
+                  value={property.ownerId ?? ""}
+                  onChange={(event) =>
+                    setProperty({
+                      ...property,
+                      ownerId: event.target.value || null,
+                    })
+                  }
+                  className="mt-1 w-full rounded-card border border-border px-3 py-2 text-body"
+                >
+                  <option value="">Imóvel próprio (sem proprietário)</option>
+                  {donos.map((d) => (
+                    <option key={d.id} value={d.id}>
+                      {d.name}
+                    </option>
+                  ))}
+                </select>
+              </label>
+              <label className="w-40 text-caption text-text-secondary">
+                Comissão (%)
+                <input
+                  type="number"
+                  min={0}
+                  max={100}
+                  step="0.5"
+                  value={property.comissao ?? ""}
+                  onChange={(event) =>
+                    setProperty({
+                      ...property,
+                      comissao: event.target.value || null,
+                    })
+                  }
+                  className="mt-1 w-full rounded-card border border-border px-3 py-2 text-body"
+                />
+              </label>
+            </div>
+            <p className="mt-2 text-caption text-text-secondary">
+              {property.ownerId
+                ? property.comissao
+                  ? `O proprietário vê o repasse já com ${Number(property.comissao)}% descontados, além da taxa da plataforma.`
+                  : "Sem comissão configurada, o proprietário vê um repasse maior do que vai receber — a tela dele avisa que o valor está em apuração."
+                : "Sem proprietário vinculado, este imóvel não aparece para ninguém além de você."}
+            </p>
+          </div>
+
           <label className="mt-3 block text-caption text-text-secondary">
             Status
             <select

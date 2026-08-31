@@ -13,6 +13,7 @@ export async function GET(request: Request) {
     );
   }
 
-  const { created, failed } = await syncAllPropertiesFromAirbnbIcal();
-  return NextResponse.json({ created, failed });
+  const { created, divergencias, failed } =
+    await syncAllPropertiesFromAirbnbIcal();
+  return NextResponse.json({ created, divergencias, failed });
 }

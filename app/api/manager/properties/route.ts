@@ -17,6 +17,8 @@ export async function GET() {
       slug: property.slug,
       status: property.status,
       basePrice: property.basePrice.toFixed(2),
+      ownerId: property.ownerId,
+      comissao: property.managementFeePercent?.toFixed(2) ?? null,
     })),
   );
 }

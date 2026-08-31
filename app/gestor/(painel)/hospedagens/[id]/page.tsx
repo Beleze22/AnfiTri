@@ -26,6 +26,8 @@ export default async function EditarHospedagemPage({
         bedrooms: property.bedrooms,
         basePrice: property.basePrice.toFixed(2),
         status: property.status,
+        ownerId: property.ownerId,
+        comissao: property.managementFeePercent?.toFixed(2) ?? null,
         airbnbIcalUrl: property.airbnbIcalUrl,
         airbnbSyncedAt: property.airbnbSyncedAt
           ? property.airbnbSyncedAt.toISOString()

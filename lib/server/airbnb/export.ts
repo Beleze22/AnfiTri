@@ -9,8 +9,18 @@ export async function generatePropertyCalendar(propertyId: string) {
     where: { id: propertyId },
   });
 
+  // Só reservas nascidas AQUI. Devolver ao Airbnb as reservas que vieram
+  // dele é redundante — ele já bloqueia as próprias — e cria um laço: se o
+  // hóspede cancelar lá, a reserva do Airbnb some, mas o nosso feed continua
+  // publicando a data como ocupada e o Airbnb a mantém bloqueada por
+  // calendário externo. A data nunca é liberada, e no painel do anfitrião não
+  // há reserva nenhuma que explique o bloqueio.
   const bookings = await prisma.booking.findMany({
-    where: { propertyId, status: "confirmado" },
+    where: {
+      propertyId,
+      status: "confirmado",
+      source: { in: ["site", "manual"] },
+    },
   });
 
   const calendar = ical({ name: `anfitri — ${property.title}` });

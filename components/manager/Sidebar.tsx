@@ -1,6 +1,9 @@
 "use client";
 
 import {
+  IconAlertTriangle,
+  IconChartBar,
+  IconUsers,
   IconCalendarWeek,
   IconHome2,
   IconLayoutDashboard,
@@ -20,6 +23,9 @@ const ITEMS = [
   { href: "/gestor/calendario", label: "Calendário", icon: IconCalendarWeek },
   { href: "/gestor/mensagens", label: "Mensagens", icon: IconMessageCircle2 },
   { href: "/gestor/regras-preco", label: "Regras de preço", icon: IconTag },
+  { href: "/gestor/faturamento", label: "Faturamento", icon: IconChartBar },
+  { href: "/gestor/proprietarios", label: "Proprietários", icon: IconUsers },
+  { href: "/gestor/alertas", label: "Alertas", icon: IconAlertTriangle },
   {
     href: "/gestor/configuracoes",
     label: "Configurações",
@@ -40,6 +46,7 @@ export function Sidebar({ managerName }: { managerName: string }) {
   const pathname = usePathname();
   const [drawerOpen, setDrawerOpen] = useState(false);
   const [hasUnread, setHasUnread] = useState(false);
+  const [alertCount, setAlertCount] = useState(0);
 
   // Polling do contador de não-lidas — alimenta a bolinha em "Mensagens"
   // (e no botão do menu mobile). 30s é suficiente para notificação passiva;
@@ -48,7 +55,10 @@ export function Sidebar({ managerName }: { managerName: string }) {
     function check() {
       fetch("/api/manager/unread")
         .then((response) => response.json())
-        .then((data) => setHasUnread(Boolean(data.unread)))
+        .then((data) => {
+          setHasUnread(Boolean(data.unread));
+          setAlertCount(Number(data.alerts) || 0);
+        })
         .catch(() => {});
     }
     check();
@@ -62,6 +72,14 @@ export function Sidebar({ managerName }: { managerName: string }) {
 
   const unreadDot = (
     <span className="ml-auto h-2 w-2 shrink-0 rounded-full bg-accent" />
+  );
+
+  // Alerta pede número, não bolinha: "3 coisas para olhar" e "algo chegou"
+  // são informações diferentes, e aqui a quantidade orienta a prioridade.
+  const alertBadge = (
+    <span className="ml-auto shrink-0 rounded-pill bg-amber-light px-1.5 text-caption font-medium text-amber">
+      {alertCount}
+    </span>
   );
 
   const navItems = (
@@ -85,6 +103,7 @@ export function Sidebar({ managerName }: { managerName: string }) {
             <Icon size={18} />
             {item.label}
             {item.href === "/gestor/mensagens" && hasUnread && unreadDot}
+            {item.href === "/gestor/alertas" && alertCount > 0 && alertBadge}
           </Link>
         );
       })}

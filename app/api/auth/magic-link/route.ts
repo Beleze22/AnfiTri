@@ -43,7 +43,11 @@ export async function POST(request: Request) {
     where: { email: parsed.data.email },
   });
 
-  if (user && user.role === "hospede") {
+  // Proprietário entra pelo mesmo mecanismo: acesso ocasional a relatório
+  // não justifica gerir senha, e o gestor não precisa distribuir credencial.
+  // Gestor fica de fora de propósito — a conta que administra tudo entra com
+  // senha, não com link que circula por e-mail.
+  if (user && (user.role === "hospede" || user.role === "proprietario")) {
     const token = await createMagicLinkToken(user.id);
     const verifyUrl = new URL("/api/auth/magic-link/verify", request.url);
     verifyUrl.searchParams.set("token", token);

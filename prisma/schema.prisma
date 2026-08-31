@@ -25,9 +25,15 @@ enum BookingStatus {
   expirado
 }
 
+// proprietario: dono do imóvel que terceiriza a administração para o gestor.
+// Acesso somente leitura, e só aos relatórios dos imóveis que são dele.
+// A arquitetura original (§2) assumia gestor e dono como a mesma pessoa e
+// declarava "não é um SaaS multi-host"; o negócio do gestor evoluiu para
+// administrar imóveis de terceiros, e o modelo acompanhou.
 enum UserRole {
   gestor
   hospede
+  proprietario
 }
 
 enum ConversationStatus {
@@ -76,11 +82,25 @@ model Property {
   airbnbSyncedAt DateTime?      @map("airbnb_synced_at")
   status         PropertyStatus @default(rascunho)
 
+  // Dono do imóvel. Nulo = imóvel do próprio gestor, que é como todos os
+  // cadastrados até aqui existem. Um dono tem vários imóveis; um imóvel tem
+  // um dono só.
+  ownerId String? @map("owner_id")
+  owner   User?   @relation(fields: [ownerId], references: [id])
+
+  // Comissão de administração, percentual sobre o valor recebido depois da
+  // taxa da plataforma. Por imóvel porque é negociado caso a caso. Nulo =
+  // não configurada: o relatório mostra a pendência em vez de assumir zero e
+  // repassar ao dono um número maior do que ele vai receber.
+  managementFeePercent Decimal? @map("management_fee_percent") @db.Decimal(5, 2)
+
   photos     Photo[]
   bookings   Booking[]
   priceRules PriceRule[]
   amenities  Amenity[]
 
+  // O painel do proprietário lista os imóveis dele a cada consulta.
+  @@index([ownerId])
   @@map("properties")
 }
 
@@ -112,11 +132,20 @@ model Booking {
   status     BookingStatus
   airbnbRef  String?       @unique @map("airbnb_ref")
   expiresAt  DateTime?     @map("expires_at")
-  totalPrice Decimal?      @map("total_price") @db.Decimal(10, 2)
-  createdAt  DateTime      @default(now()) @map("created_at")
+  // totalPrice é o BRUTO: o que o hóspede paga. As duas colunas abaixo
+  // separam o que a plataforma retém do que o gestor efetivamente recebe —
+  // no Airbnb a taxa de serviço do anfitrião passa de 18%, então relatório
+  // que só olha o bruto superestima a receita.
+  // Nulo = desconhecido, não zero: reserva do site sem Stripe configurado
+  // não tem taxa a apurar, e o relatório trata nulo como sem retenção.
+  totalPrice  Decimal?     @map("total_price") @db.Decimal(10, 2)
+  platformFee Decimal?     @map("platform_fee") @db.Decimal(10, 2)
+  netAmount   Decimal?     @map("net_amount") @db.Decimal(10, 2)
+  createdAt   DateTime     @default(now()) @map("created_at")
 
   conversation Conversation?
   payment      Payment?
+  alerts       Alert[]
 
   // (property_id, status) cobre toda checagem de disponibilidade/overlap;
   // user_id cobre "minhas reservas" do hóspede.
@@ -173,9 +202,10 @@ model User {
   quietHoursEnd      DateTime? @map("quiet_hours_end") @db.Time
   gracePeriodHours   Int?      @map("grace_period_hours")
 
-  bookings        Booking[]
-  messages        Message[]
-  magicLinkTokens MagicLinkToken[]
+  bookings         Booking[]
+  messages         Message[]
+  magicLinkTokens  MagicLinkToken[]
+  ownedProperties  Property[]
 
   @@map("users")
 }
@@ -238,6 +268,36 @@ model Payment {
   updatedAt         DateTime      @updatedAt @map("updated_at")
 
   @@map("payments")
+}
+
+// Coisas que exigem atenção humana e que nenhum job pode resolver sozinho.
+// Nasceu de duas necessidades que são a mesma pergunta: o parser recebeu algo
+// que parece reserva mas não conseguiu identificar, e o calendário do Airbnb
+// deixou de listar uma reserva que temos como confirmada. Nos dois casos a
+// decisão é do gestor — automatizar seria apagar ou inventar reserva com base
+// em sinal incerto.
+enum AlertKind {
+  parser_sem_referencia
+  divergencia_airbnb
+}
+
+model Alert {
+  id         String    @id @default(cuid())
+  kind       AlertKind
+  title      String
+  detail     String    @db.Text
+  bookingId  String?   @map("booking_id")
+  booking    Booking?  @relation(fields: [bookingId], references: [id])
+  // Identifica a causa (id da mensagem no Gmail, id da reserva) para o mesmo
+  // problema não gerar um alerta novo a cada execução do cron.
+  dedupeKey  String?   @map("dedupe_key")
+  createdAt  DateTime  @default(now()) @map("created_at")
+  resolvedAt DateTime? @map("resolved_at")
+
+  // O painel lista sempre os não resolvidos; o índice cobre essa varredura.
+  @@index([resolvedAt])
+  @@index([dedupeKey, resolvedAt])
+  @@map("alerts")
 }
 
 // Contadores de rate limiting em janela fixa — key = "escopo:identificador:
