@@ -8,11 +8,33 @@ on:
 jobs:
   ci:
     runs-on: ubuntu-latest
+
+    # Os testes de lib/server/booking rodam contra Postgres de verdade: são
+    # transações serializable e transições atômicas, que um mock do Prisma não
+    # exercita. Sem este serviço eles se marcariam como skip e o CI ficaria
+    # verde sem verificar nada.
+    services:
+      postgres:
+        image: postgres:16
+        env:
+          POSTGRES_PASSWORD: postgres
+          POSTGRES_DB: anfitri_test
+        ports:
+          - 5432:5432
+        options: >-
+          --health-cmd pg_isready
+          --health-interval 10s
+          --health-timeout 5s
+          --health-retries 5
+
     env:
       # Placeholders: o build não conecta no banco (páginas com dados são
       # dinâmicas), mas o Prisma e o next build exigem as variáveis definidas.
       DATABASE_URL: postgresql://placeholder:placeholder@localhost:5432/placeholder
-      DIRECT_URL: postgresql://placeholder:placeholder@localhost:5432/placeholder
+      # DIRECT_URL aponta para o serviço acima porque é ele que o
+      # `migrate deploy` usa; o build não conecta em banco nenhum.
+      DIRECT_URL: postgresql://postgres:postgres@localhost:5432/anfitri_test
+      TEST_DATABASE_URL: postgresql://postgres:postgres@localhost:5432/anfitri_test
       JWT_SECRET: ci-placeholder-secret
     steps:
       - uses: actions/checkout@v4
@@ -25,6 +47,9 @@ jobs:
       - run: npm ci
 
       - run: npx prisma generate
+
+      - name: Aplica migrations no banco de teste
+        run: npx prisma migrate deploy
 
       - run: npm run lint
 
