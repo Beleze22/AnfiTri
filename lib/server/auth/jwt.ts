@@ -1,6 +1,6 @@
 import { jwtVerify, SignJWT } from "jose";
 
-export type Role = "gestor" | "hospede";
+export type Role = "gestor" | "hospede" | "proprietario";
 
 export type SessionPayload = {
   sub: string;
@@ -14,6 +14,10 @@ export const MANAGER_SESSION_DURATION = "7d";
 export const MANAGER_SESSION_MAX_AGE_SECONDS = 60 * 60 * 24 * 7;
 export const GUEST_SESSION_DURATION = "60d";
 export const GUEST_SESSION_MAX_AGE_SECONDS = 60 * 60 * 24 * 60;
+// Proprietário acessa relatório de tempos em tempos, não é uso diário — 7
+// dias, como o gestor, em vez dos 60 do hóspede.
+export const OWNER_SESSION_DURATION = "7d";
+export const OWNER_SESSION_MAX_AGE_SECONDS = 60 * 60 * 24 * 7;
 
 function getSecretKey() {
   const secret = process.env.JWT_SECRET;
@@ -38,7 +42,9 @@ export async function verifySession(
     const { payload } = await jwtVerify(token, getSecretKey());
     if (
       typeof payload.sub !== "string" ||
-      (payload.role !== "gestor" && payload.role !== "hospede")
+      (payload.role !== "gestor" &&
+        payload.role !== "hospede" &&
+        payload.role !== "proprietario")
     ) {
       return null;
     }

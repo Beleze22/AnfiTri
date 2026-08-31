@@ -26,6 +26,8 @@ export type LinhaFaturamento = {
   bruto: string;
   taxa: string;
   liquido: string;
+  comissao: string;
+  repasse: string;
 };
 
 const ROTULO_ORIGEM: Record<string, string> = {
@@ -47,10 +49,20 @@ type Acumulado = {
   bruto: Prisma.Decimal;
   taxa: Prisma.Decimal;
   liquido: Prisma.Decimal;
+  comissao: Prisma.Decimal;
+  repasse: Prisma.Decimal;
 };
 
 function novoAcumulado(): Acumulado {
-  return { reservas: 0, noites: 0, bruto: ZERO, taxa: ZERO, liquido: ZERO };
+  return {
+    reservas: 0,
+    noites: 0,
+    bruto: ZERO,
+    taxa: ZERO,
+    liquido: ZERO,
+    comissao: ZERO,
+    repasse: ZERO,
+  };
 }
 
 function serializar(
@@ -66,6 +78,8 @@ function serializar(
     bruto: a.bruto.toFixed(2),
     taxa: a.taxa.toFixed(2),
     liquido: a.liquido.toFixed(2),
+    comissao: a.comissao.toFixed(2),
+    repasse: a.repasse.toFixed(2),
   };
 }
 
@@ -73,6 +87,10 @@ export async function getFaturamento(
   inicio: Date,
   fim: Date,
   propertyId?: string,
+  // Restringe aos imóveis deste dono. É a única barreira entre um
+  // proprietário e o faturamento dos imóveis dos outros — passe sempre a
+  // partir da sessão, nunca de parâmetro vindo do cliente.
+  ownerId?: string,
 ) {
   const bookings = await prisma.booking.findMany({
     // Só reserva firme entra: pendente pode expirar, cancelada e expirada não
@@ -81,8 +99,13 @@ export async function getFaturamento(
       status: "confirmado",
       checkIn: { gte: inicio, lt: fim },
       ...(propertyId ? { propertyId } : {}),
+      ...(ownerId ? { property: { ownerId } } : {}),
     },
-    include: { property: { select: { id: true, title: true } } },
+    include: {
+      property: {
+        select: { id: true, title: true, managementFeePercent: true },
+      },
+    },
     orderBy: { checkIn: "asc" },
   });
 
@@ -90,6 +113,7 @@ export async function getFaturamento(
   const porOrigem = new Map<string, Acumulado>();
   const total = novoAcumulado();
   let semValor = 0;
+  let semComissao = 0;
 
   for (const b of bookings) {
     const bruto = b.totalPrice ?? ZERO;
@@ -100,7 +124,16 @@ export async function getFaturamento(
     const liquido = b.netAmount ?? bruto.minus(taxa);
     const noites = noitesDe(b.checkIn, b.checkOut);
 
+    // Comissão incide sobre o líquido, não sobre o bruto: o gestor administra
+    // o que efetivamente entrou, não o que a plataforma reteve.
+    // Percentual nulo = não configurado; conta como zero, e o relatório avisa
+    // em vez de repassar ao dono um número maior do que ele receberá.
+    const percentual = b.property.managementFeePercent;
+    const comissao = percentual ? liquido.mul(percentual).div(100) : ZERO;
+    const repasse = liquido.minus(comissao);
+
     if (!b.totalPrice) semValor += 1;
+    if (!percentual) semComissao += 1;
 
     for (const acc of [
       porHospedagem.get(b.property.id) ??
@@ -122,13 +155,15 @@ export async function getFaturamento(
       acc.bruto = acc.bruto.plus(bruto);
       acc.taxa = acc.taxa.plus(taxa);
       acc.liquido = acc.liquido.plus(liquido);
+      acc.comissao = acc.comissao.plus(comissao);
+      acc.repasse = acc.repasse.plus(repasse);
     }
   }
 
   const diariaMedia =
     total.noites > 0 ? total.liquido.div(total.noites).toFixed(2) : "0.00";
 
-  const ocupacao = await calcularOcupacao(inicio, fim, propertyId);
+  const ocupacao = await calcularOcupacao(inicio, fim, propertyId, ownerId);
 
   return {
     inicio: inicio.toISOString().slice(0, 10),
@@ -140,6 +175,9 @@ export async function getFaturamento(
     // financeira. Exposto para o relatório poder avisar em vez de fingir que
     // o faturamento é zero.
     reservasSemValor: semValor,
+    // Reservas em imóvel sem percentual de administração configurado: a
+    // comissão entra como zero e o repasse fica inflado.
+    reservasSemComissao: semComissao,
     porHospedagem: [...porHospedagem.entries()]
       .map(([id, a]) => serializar(id, a.rotulo, a))
       .sort((a, b) => Number(b.liquido) - Number(a.liquido)),
@@ -156,10 +194,17 @@ export async function getFaturamento(
 // atribui tudo ao mês do check-in: somar receita de fora do mês e dividir por
 // noites de dentro daria diária média sem sentido. Mesmo cálculo que o
 // dashboard já usa, para os dois números baterem entre si.
-async function calcularOcupacao(inicio: Date, fim: Date, propertyId?: string) {
+async function calcularOcupacao(
+  inicio: Date,
+  fim: Date,
+  propertyId?: string,
+  ownerId?: string,
+) {
   const [imoveis, estadias] = await Promise.all([
     prisma.property.count({
-      where: propertyId ? { id: propertyId } : { status: { not: "rascunho" } },
+      where: propertyId
+        ? { id: propertyId }
+        : { status: { not: "rascunho" }, ...(ownerId ? { ownerId } : {}) },
     }),
     prisma.booking.findMany({
       where: {
@@ -167,6 +212,7 @@ async function calcularOcupacao(inicio: Date, fim: Date, propertyId?: string) {
         checkIn: { lt: fim },
         checkOut: { gt: inicio },
         ...(propertyId ? { propertyId } : {}),
+        ...(ownerId ? { property: { ownerId } } : {}),
       },
       select: { checkIn: true, checkOut: true },
     }),
@@ -198,6 +244,7 @@ export async function getEvolucaoMensal(
   referencia: Date,
   meses = 12,
   propertyId?: string,
+  ownerId?: string,
 ) {
   const fim = new Date(
     Date.UTC(referencia.getUTCFullYear(), referencia.getUTCMonth() + 1, 1),
@@ -211,9 +258,11 @@ export async function getEvolucaoMensal(
       status: "confirmado",
       checkIn: { gte: inicio, lt: fim },
       ...(propertyId ? { propertyId } : {}),
+      ...(ownerId ? { property: { ownerId } } : {}),
     },
     select: {
       checkIn: true,
+      property: { select: { managementFeePercent: true } },
       totalPrice: true,
       platformFee: true,
       netAmount: true,
@@ -233,7 +282,15 @@ export async function getEvolucaoMensal(
     if (!porMes.has(chave)) continue;
     const bruto = b.totalPrice ?? ZERO;
     const liquido = b.netAmount ?? bruto.minus(b.platformFee ?? ZERO);
-    porMes.set(chave, porMes.get(chave)!.plus(liquido));
+    // Na visão do dono o gráfico mostra o repasse; na do gestor, o recebido.
+    const valor = ownerId
+      ? liquido.minus(
+          b.property.managementFeePercent
+            ? liquido.mul(b.property.managementFeePercent).div(100)
+            : ZERO,
+        )
+      : liquido;
+    porMes.set(chave, porMes.get(chave)!.plus(valor));
   }
 
   return [...porMes.entries()].map(([mes, valor]) => ({
