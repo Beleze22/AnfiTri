@@ -3,6 +3,7 @@
 import {
   IconAlertTriangle,
   IconChartBar,
+  IconUsers,
   IconCalendarWeek,
   IconHome2,
   IconLayoutDashboard,
@@ -23,6 +24,7 @@ const ITEMS = [
   { href: "/gestor/mensagens", label: "Mensagens", icon: IconMessageCircle2 },
   { href: "/gestor/regras-preco", label: "Regras de preço", icon: IconTag },
   { href: "/gestor/faturamento", label: "Faturamento", icon: IconChartBar },
+  { href: "/gestor/proprietarios", label: "Proprietários", icon: IconUsers },
   { href: "/gestor/alertas", label: "Alertas", icon: IconAlertTriangle },
   {
     href: "/gestor/configuracoes",
