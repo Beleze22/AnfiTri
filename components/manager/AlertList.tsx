@@ -4,6 +4,7 @@ import {
   IconAlertTriangle,
   IconCheck,
   IconMailExclamation,
+  IconMailOff,
 } from "@tabler/icons-react";
 import { useCallback, useEffect, useState } from "react";
 
@@ -12,7 +13,7 @@ import { StatusBadge } from "@/components/ui/StatusBadge";
 
 type Alert = {
   id: string;
-  kind: "parser_sem_referencia" | "divergencia_airbnb";
+  kind: "parser_sem_referencia" | "divergencia_airbnb" | "falha_de_email";
   title: string;
   detail: string;
   createdAt: string;
@@ -87,15 +88,22 @@ export function AlertList() {
               className="rounded-card border border-border bg-surface p-4"
             >
               <div className="flex items-start gap-3">
+                {/* Cor por natureza do problema: âmbar para leitura de
+                    e-mail, azul para divergência do Airbnb, coral para envio
+                    que não saiu — este último afeta o hóspede diretamente. */}
                 <span
                   className={`mt-0.5 shrink-0 ${
                     alert.kind === "parser_sem_referencia"
                       ? "text-amber"
-                      : "text-blue"
+                      : alert.kind === "falha_de_email"
+                        ? "text-accent"
+                        : "text-blue"
                   }`}
                 >
                   {alert.kind === "parser_sem_referencia" ? (
                     <IconMailExclamation size={20} />
+                  ) : alert.kind === "falha_de_email" ? (
+                    <IconMailOff size={20} />
                   ) : (
                     <IconAlertTriangle size={20} />
                   )}
