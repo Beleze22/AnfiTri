@@ -1,4 +1,5 @@
 import { getGmailClient } from "@/lib/server/airbnb/gmail";
+import { raiseAlert } from "@/lib/server/alerts";
 
 // Envio de e-mail pela conta do gestor, via Gmail API — mesma credencial já
 // usada para ler as confirmações do Airbnb. Sem GMAIL_REFRESH_TOKEN/GMAIL_USER
@@ -81,12 +82,62 @@ export async function enviarEmail(input: {
 
 // Notificação nunca pode derrubar a operação que a originou: uma reserva
 // confirmada com sucesso não deve virar erro só porque o e-mail falhou.
+//
+// Mas engolir a falha em silêncio é o defeito que já corrigimos no parser: o
+// hóspede não recebe a confirmação e ninguém fica sabendo, porque console.error
+// em produção vai para um painel que ninguém abre. Por isso vira alerta.
 export function enviarEmailSemBloquear(input: {
   para: string;
   assunto: string;
   html: string;
 }) {
-  void enviarEmail(input).catch((erro) => {
+  void enviarEmail(input).catch(async (erro) => {
     console.error(`[email] falha ao enviar "${input.assunto}":`, erro);
+    await registrarFalha(input.para, input.assunto, erro).catch(() => {
+      // Se nem o alerta pode ser gravado, o log é o que resta.
+    });
+  });
+}
+
+// Credencial vencida derruba TODOS os envios, então gera um alerta único em
+// vez de um por mensagem — dezenas de avisos idênticos esconderiam a causa.
+// Falha de uma mensagem só é específica daquele destinatário e merece alerta
+// próprio, com o endereço, para o gestor conseguir agir.
+function ehProblemaDeCredencial(erro: unknown) {
+  const texto = erro instanceof Error ? erro.message : String(erro);
+  return /invalid_grant|invalid_client|unauthorized|401|403/i.test(texto);
+}
+
+async function registrarFalha(para: string, assunto: string, erro: unknown) {
+  const motivo = erro instanceof Error ? erro.message : String(erro);
+
+  if (ehProblemaDeCredencial(erro)) {
+    await raiseAlert({
+      kind: "falha_de_email",
+      title: "O sistema não está conseguindo enviar e-mails",
+      detail: [
+        "A conta de e-mail recusou o envio, o que costuma significar autorização expirada ou revogada.",
+        "",
+        `Motivo: ${motivo}`,
+        "",
+        "Enquanto isso, hóspedes não recebem confirmação nem link de acesso, e você não recebe aviso de pedido novo. É preciso refazer a autorização da conta de e-mail.",
+      ].join("\n"),
+      dedupeKey: "email:credencial",
+    });
+    return;
+  }
+
+  await raiseAlert({
+    kind: "falha_de_email",
+    title: "Um e-mail não pôde ser entregue",
+    detail: [
+      `Destinatário: ${para}`,
+      `Assunto: ${assunto}`,
+      "",
+      `Motivo: ${motivo}`,
+      "",
+      "A operação que originou este e-mail foi concluída normalmente — só o aviso não saiu. Se for uma confirmação de reserva, vale avisar o hóspede por outro canal.",
+    ].join("\n"),
+    dedupeKey: `email:${para}:${assunto}`,
   });
 }

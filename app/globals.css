@@ -44,3 +44,15 @@ body {
   background-color: var(--color-bg);
   color: var(--color-text-primary);
 }
+
+/*
+ * O preflight do Tailwind v4 não define cursor em botão, e o padrão do
+ * navegador é seta — o que fazia todo botão do sistema parecer não clicável.
+ * Corrigido aqui, e não classe a classe, porque vale para os 75 botões.
+ * Desabilitado mantém o cursor padrão, sinalizando que não há ação.
+ */
+button:not(:disabled),
+[role="button"]:not(:disabled),
+label:has(> input[type="file"]) {
+  cursor: pointer;
+}

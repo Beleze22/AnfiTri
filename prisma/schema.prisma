@@ -279,6 +279,7 @@ model Payment {
 enum AlertKind {
   parser_sem_referencia
   divergencia_airbnb
+  falha_de_email
 }
 
 model Alert {

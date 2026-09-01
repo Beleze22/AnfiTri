@@ -304,6 +304,56 @@ describe.skipIf(!temBanco)("cancelBooking", () => {
     );
   });
 
+  it("com somentePendente, cancela pendente", async () => {
+    const { property } = await cenario();
+    const { booking } = await createSiteBooking({
+      propertyId: property.id,
+      checkIn: dia("2027-07-10"),
+      checkOut: dia("2027-07-12"),
+      ...hospede,
+    });
+
+    const cancelada = await cancelBooking(booking.id, {
+      somentePendente: true,
+    });
+    expect(cancelada.status).toBe("cancelado");
+  });
+
+  it("com somentePendente, recusa reserva já confirmada", async () => {
+    const { property } = await cenario();
+    const { booking } = await createSiteBooking({
+      propertyId: property.id,
+      checkIn: dia("2027-07-10"),
+      checkOut: dia("2027-07-12"),
+      ...hospede,
+    });
+    await confirmBooking(booking.id);
+
+    // É o caso que protege o hóspede de desfazer o que o gestor já firmou —
+    // inclusive na corrida entre ler o status e cancelar.
+    await expect(
+      cancelBooking(booking.id, { somentePendente: true }),
+    ).rejects.toBeInstanceOf(InvalidTransitionError);
+
+    const depois = await prisma.booking.findUniqueOrThrow({
+      where: { id: booking.id },
+    });
+    expect(depois.status).toBe("confirmado");
+  });
+
+  it("sem somentePendente, o gestor cancela a confirmada", async () => {
+    const { property } = await cenario();
+    const { booking } = await createSiteBooking({
+      propertyId: property.id,
+      checkIn: dia("2027-07-10"),
+      checkOut: dia("2027-07-12"),
+      ...hospede,
+    });
+    await confirmBooking(booking.id);
+
+    expect((await cancelBooking(booking.id)).status).toBe("cancelado");
+  });
+
   it("cancelar libera a data para uma reserva nova", async () => {
     const { property } = await cenario();
     const { booking } = await createSiteBooking({
