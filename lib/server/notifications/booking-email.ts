@@ -169,3 +169,29 @@ export async function avisarGestorNovoPedido(bookingId: string) {
       </p>`),
   });
 }
+
+// O hóspede desistiu antes da aprovação. A data volta ao mercado na hora e o
+// gestor precisa saber — se a desistência acontece de madrugada, sem este
+// aviso ele só descobre ao abrir o painel.
+export async function avisarGestorCancelamentoDoHospede(bookingId: string) {
+  const booking = await carregar(bookingId);
+  if (!booking) return;
+
+  const gestor = await prisma.user.findFirst({ where: { role: "gestor" } });
+  if (!gestor) return;
+
+  enviarEmailSemBloquear({
+    para: gestor.email,
+    assunto: `Pedido cancelado pelo hóspede — ${booking.property.title}`,
+    html: layoutEmail(`
+      <p>
+        <strong>${booking.user.name}</strong> desistiu do pedido antes da sua
+        resposta. As datas já voltaram a ficar disponíveis.
+      </p>
+      ${blocoReserva([...detalhes(booking), ["Hóspede", booking.user.name]])}
+      <p style="color: #6b6862; font-size: 13px;">
+        Nenhuma cobrança foi feita. Se havia cartão autorizado, a retenção foi
+        liberada automaticamente.
+      </p>`),
+  });
+}

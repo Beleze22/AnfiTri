@@ -72,6 +72,12 @@ export function BookingDetailPanel({
   const [booking, setBooking] = useState<BookingDetail | null>(null);
   const [actionError, setActionError] = useState<string | null>(null);
   const [descarteAberto, setDescarteAberto] = useState(false);
+  // Guarda QUAL ação está em curso, não só um booleano: confirmar dispara
+  // captura no Stripe e envio de e-mail, então há segundos de espera em que
+  // a tela precisa dizer o que está acontecendo.
+  const [processando, setProcessando] = useState<"confirm" | "cancel" | null>(
+    null,
+  );
 
   useEffect(() => {
     if (!bookingId) return;
@@ -81,22 +87,35 @@ export function BookingDetailPanel({
         setBooking(data);
         setActionError(null);
         setDescarteAberto(false);
+        setProcessando(null);
       });
   }, [bookingId]);
 
   async function handleAction(action: "confirm" | "cancel") {
-    if (!bookingId) return;
+    // Sem esta guarda, um segundo clique durante a espera dispara outra
+    // requisição: a primeira conclui e a segunda volta com "só é possível
+    // cancelar uma reserva pendente ou confirmada", dando a impressão de que
+    // a ação falhou quando ela tinha funcionado.
+    if (!bookingId || processando) return;
     setActionError(null);
-    const response = await fetch(`/api/bookings/${bookingId}/${action}`, {
-      method: "PATCH",
-    });
-    if (!response.ok) {
-      const body = await response.json();
-      setActionError(body.error?.message ?? "Não foi possível concluir.");
-      return;
+    setProcessando(action);
+
+    try {
+      const response = await fetch(`/api/bookings/${bookingId}/${action}`, {
+        method: "PATCH",
+      });
+      if (!response.ok) {
+        const body = await response.json();
+        setActionError(body.error?.message ?? "Não foi possível concluir.");
+        return;
+      }
+      onChanged?.();
+      onClose();
+    } catch {
+      setActionError("Falha de conexão. Tente novamente.");
+    } finally {
+      setProcessando(null);
     }
-    onChanged?.();
-    onClose();
   }
 
   const open = bookingId !== null;
@@ -194,10 +213,13 @@ export function BookingDetailPanel({
                       <div className="mt-3 flex gap-2">
                         <button
                           type="button"
+                          disabled={processando !== null}
                           onClick={() => handleAction("cancel")}
-                          className="flex-1 rounded-pill bg-accent px-4 py-2.5 text-body font-medium text-accent-text"
+                          className="flex-1 rounded-pill bg-accent px-4 py-2.5 text-body font-medium text-accent-text disabled:opacity-60"
                         >
-                          Descartar
+                          {processando === "cancel"
+                            ? "Descartando…"
+                            : "Descartar"}
                         </button>
                         <button
                           type="button"
@@ -258,17 +280,21 @@ export function BookingDetailPanel({
                   <div className="mt-5 flex gap-2">
                     <button
                       type="button"
+                      disabled={processando !== null}
                       onClick={() => handleAction("confirm")}
-                      className="flex-1 rounded-pill bg-accent px-4 py-2.5 text-body font-medium text-accent-text"
+                      className="flex-1 rounded-pill bg-accent px-4 py-2.5 text-body font-medium text-accent-text disabled:opacity-60"
                     >
-                      Confirmar reserva
+                      {processando === "confirm"
+                        ? "Confirmando…"
+                        : "Confirmar reserva"}
                     </button>
                     <button
                       type="button"
+                      disabled={processando !== null}
                       onClick={() => handleAction("cancel")}
-                      className="flex-1 rounded-pill border border-border px-4 py-2.5 text-body text-text-primary"
+                      className="flex-1 rounded-pill border border-border px-4 py-2.5 text-body text-text-primary disabled:opacity-60"
                     >
-                      Cancelar
+                      {processando === "cancel" ? "Cancelando…" : "Cancelar"}
                     </button>
                   </div>
                 )}
@@ -276,10 +302,13 @@ export function BookingDetailPanel({
                   <div className="mt-5">
                     <button
                       type="button"
+                      disabled={processando !== null}
                       onClick={() => handleAction("cancel")}
-                      className="w-full rounded-pill border border-border px-4 py-2.5 text-body text-text-primary"
+                      className="w-full rounded-pill border border-border px-4 py-2.5 text-body text-text-primary disabled:opacity-60"
                     >
-                      Cancelar
+                      {processando === "cancel"
+                        ? "Cancelando…"
+                        : "Cancelar reserva"}
                     </button>
                   </div>
                 )}

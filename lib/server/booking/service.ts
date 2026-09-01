@@ -314,16 +314,29 @@ export async function confirmBooking(id: string) {
   return prisma.booking.findUniqueOrThrow({ where: { id } });
 }
 
-export async function cancelBooking(id: string) {
+// `somentePendente` existe para o cancelamento feito pelo próprio hóspede,
+// que só pode desistir antes da aprovação. A restrição entra no updateMany, e
+// não numa checagem antes: entre ler o status e cancelar, o gestor pode ter
+// confirmado a reserva, e o hóspede acabaria cancelando algo já firmado.
+export async function cancelBooking(
+  id: string,
+  opcoes: { somentePendente?: boolean } = {},
+) {
+  const permitidos = opcoes.somentePendente
+    ? (["pendente"] as const)
+    : (["pendente", "confirmado"] as const);
+
   const result = await prisma.booking.updateMany({
-    where: { id, status: { in: ["pendente", "confirmado"] } },
+    where: { id, status: { in: [...permitidos] } },
     data: { status: "cancelado" },
   });
 
   if (result.count === 0) {
     await prisma.booking.findUniqueOrThrow({ where: { id } });
     throw new InvalidTransitionError(
-      "Só é possível cancelar uma reserva pendente ou confirmada.",
+      opcoes.somentePendente
+        ? "Esta reserva já foi respondida pelo gestor e não pode mais ser cancelada por aqui."
+        : "Só é possível cancelar uma reserva pendente ou confirmada.",
     );
   }
 
