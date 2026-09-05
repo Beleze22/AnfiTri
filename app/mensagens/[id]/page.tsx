@@ -28,7 +28,7 @@ export default async function ConversationPage({
   });
 
   return (
-    <main className="flex h-screen flex-col bg-bg">
+    <main className="mx-auto flex h-screen max-w-2xl flex-col bg-bg">
       <header className="flex shrink-0 items-center gap-3 border-b border-border bg-surface px-4 py-3">
         <Link href="/mensagens" className="text-text-secondary">
           <IconArrowLeft size={20} />

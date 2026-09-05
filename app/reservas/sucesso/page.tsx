@@ -32,7 +32,7 @@ export default async function SucessoPage({
   });
 
   return (
-    <main className="flex min-h-screen flex-col items-center bg-bg px-4 py-10 text-center">
+    <main className="mx-auto flex min-h-screen max-w-2xl flex-col items-center bg-bg px-4 py-10 text-center">
       <IconCircleCheck size={48} className="text-green" />
       <h1 className="mt-3 text-page-title font-semibold text-text-primary">
         Pedido enviado!

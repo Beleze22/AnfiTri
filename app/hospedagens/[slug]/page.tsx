@@ -26,7 +26,7 @@ export default async function PropertyPage({
   );
 
   return (
-    <main className="min-h-screen bg-bg pb-24">
+    <main className="mx-auto min-h-screen max-w-2xl bg-bg pb-24">
       <PhotoCarousel photos={property.photos} />
 
       <div className="px-4 py-4">
