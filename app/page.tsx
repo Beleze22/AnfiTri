@@ -69,7 +69,7 @@ export default function Home() {
   }, [category, range]);
 
   return (
-    <main className="min-h-screen bg-bg pb-24">
+    <main className="mx-auto min-h-screen max-w-2xl bg-bg pb-24">
       <header className="flex items-center justify-between px-4 py-4">
         <span className="text-page-title font-semibold text-text-primary">
           anfitri

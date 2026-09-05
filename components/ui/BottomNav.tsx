@@ -19,23 +19,25 @@ export function BottomNav() {
   const pathname = usePathname();
 
   return (
-    <nav className="fixed inset-x-0 bottom-0 z-10 flex border-t border-border bg-surface">
-      {ITEMS.map((item) => {
-        const active = pathname === item.href;
-        const Icon = item.icon;
-        return (
-          <Link
-            key={item.href}
-            href={item.href}
-            className={`flex flex-1 flex-col items-center gap-0.5 py-2.5 text-caption ${
-              active ? "text-accent" : "text-text-secondary"
-            }`}
-          >
-            <Icon size={22} />
-            {item.label}
-          </Link>
-        );
-      })}
+    <nav className="fixed inset-x-0 bottom-0 z-10 border-t border-border bg-surface">
+      <div className="mx-auto flex max-w-2xl">
+        {ITEMS.map((item) => {
+          const active = pathname === item.href;
+          const Icon = item.icon;
+          return (
+            <Link
+              key={item.href}
+              href={item.href}
+              className={`flex flex-1 flex-col items-center gap-0.5 py-2.5 text-caption ${
+                active ? "text-accent" : "text-text-secondary"
+              }`}
+            >
+              <Icon size={22} />
+              {item.label}
+            </Link>
+          );
+        })}
+      </div>
     </nav>
   );
 }

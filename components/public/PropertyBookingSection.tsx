@@ -69,27 +69,29 @@ export function PropertyBookingSection({
         />
       </section>
 
-      <div className="fixed inset-x-0 bottom-0 z-10 flex items-center justify-between border-t border-border bg-surface px-4 py-3">
-        <div>
-          <p className="text-body font-semibold text-text-primary">
-            {total ? `R$ ${total} total` : `R$ ${basePrice} / noite`}
-          </p>
-          {dateLabel && (
-            <p className="text-caption text-text-secondary">{dateLabel}</p>
-          )}
+      <div className="fixed inset-x-0 bottom-0 z-10 border-t border-border bg-surface">
+        <div className="mx-auto flex max-w-2xl items-center justify-between px-4 py-3">
+          <div>
+            <p className="text-body font-semibold text-text-primary">
+              {total ? `R$ ${total} total` : `R$ ${basePrice} / noite`}
+            </p>
+            {dateLabel && (
+              <p className="text-caption text-text-secondary">{dateLabel}</p>
+            )}
+          </div>
+          <button
+            type="button"
+            disabled={!range.checkIn || !range.checkOut}
+            onClick={() =>
+              router.push(
+                `/hospedagens/${slug}/reservar?checkIn=${range.checkIn!.toISOString().slice(0, 10)}&checkOut=${range.checkOut!.toISOString().slice(0, 10)}`,
+              )
+            }
+            className="rounded-pill bg-accent px-5 py-2.5 text-body font-medium text-accent-text disabled:opacity-40"
+          >
+            Reservar
+          </button>
         </div>
-        <button
-          type="button"
-          disabled={!range.checkIn || !range.checkOut}
-          onClick={() =>
-            router.push(
-              `/hospedagens/${slug}/reservar?checkIn=${range.checkIn!.toISOString().slice(0, 10)}&checkOut=${range.checkOut!.toISOString().slice(0, 10)}`,
-            )
-          }
-          className="rounded-pill bg-accent px-5 py-2.5 text-body font-medium text-accent-text disabled:opacity-40"
-        >
-          Reservar
-        </button>
       </div>
     </>
   );

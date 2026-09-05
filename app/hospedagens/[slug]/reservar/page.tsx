@@ -43,7 +43,7 @@ export default async function ReservarPage({
   const dateLabel = `${dateFormatter.format(checkInDate)} – ${dateFormatter.format(checkOutDate)}`;
 
   return (
-    <main className="min-h-screen bg-bg px-4 py-4">
+    <main className="mx-auto min-h-screen max-w-2xl bg-bg px-4 py-4">
       <h1 className="text-page-title font-semibold text-text-primary">
         {property.title}
       </h1>
