@@ -283,3 +283,90 @@ Substitui a lista de pendências da fase de arquitetura, já resolvidas nas deci
 
 - Separar ambientes de desenvolvimento e produção, incluindo conta de e-mail própria para cada um.
 - Cadastrar as URLs de iCal dos anúncios reais e o e-mail do gestor que recebe as confirmações do Airbnb.
+
+## 13. Integrações avaliadas, não contratadas
+
+Levantamento de 08 e 09/09/2026. Nenhuma foi adotada — o registro existe para
+a decisão não precisar ser refeita do zero, e para os gatilhos ficarem
+explícitos.
+
+### 13.1 PriceLabs — leitura de preço dinâmico
+
+O gestor já assina e usa para precificar os anúncios do Airbnb.
+
+**Viável:** `POST https://api.pricelabs.co/v1/listing_prices`, header
+`X-API-Key`, corpo com `listings[{id, pms, dateFrom, dateTo}]`. Devolve por
+data: `price` (recomendado), `user_price`, `min_stay`, `booking_status`,
+`unbookable`, `check_in`, `check_out`, `demand_desc`. A chave sai de Account
+Settings → API Details → Enable.
+
+**Não viável:** escrever calendário. A escrita da API cobre só configuração de
+precificação; o endpoint de reservas é somente leitura, e o PriceLabs recebe
+disponibilidade do PMS/canal conectado. Ele também **não envia
+disponibilidade ao Airbnb** — sincroniza preço, estadia mínima e restrições de
+check-in/out, e a documentação dele diz explicitamente que não gerencia
+disponibilidade.
+
+**Por que interessa:** hoje o preço do site vem de `PriceRule` manual,
+enquanto o do Airbnb vem do PriceLabs — os dois divergem com o tempo. Puxar o
+`price` faria o site usar a mesma inteligência já paga, e a comparação por
+canal ficaria com o mesmo preço, sem os 18% de taxa.
+
+**Bloqueio:** depende da chave e dos pares `id`/`pms` de cada anúncio.
+Rate limits não estão documentados.
+
+### 13.2 Channex — channel manager como infraestrutura
+
+API-first, voltada a quem constrói software (não produto para anfitrião), com
+68 canais.
+
+**Resolveria:** sincronização de calendário quase instantânea nos dois
+sentidos, substituindo o feed iCal; reservas e cancelamentos por webhook, o
+que **elimina o parser de e-mail** e a maior parte dos riscos que moram nele;
+e mensagens unificadas com Airbnb, Booking.com e Expedia, incluindo o fluxo de
+*Inquiry* do Airbnb.
+
+**Não resolve:** criação de anúncio. O anúncio precisa já existir na OTA; o
+Channex apenas mapeia. Conteúdo — fotos, descrição, comodidades — não é
+enviado às OTAs. Publicar anúncio por API depende do programa de parceiros
+certificados de cada plataforma.
+
+**Custo para 12 anúncios:** US$ 130 fixos + US$ 6 (12 × US$ 0,50 de channel
+manager) + US$ 6 (mensagens) = **US$ 142/mês**. Sem setup, sem comissão, sem
+fidelidade. A parte fixa domina, então crescer é barato: US$ 11,83 por anúncio
+hoje, US$ 6,17 com 24. Ambiente de teste gratuito; certificação exigida só
+para ir ao ar.
+
+**Decisão: adiado.** A integração atual está estabilizada e com rede de
+segurança. Gatilhos para reabrir: a primeira dupla venda real, a vontade de
+entrar em Booking.com ou Vrbo, ou o gestor reclamar de manter duas caixas de
+mensagem.
+
+### 13.3 Infraestrutura de produção
+
+**Vercel Hobby não serve.** A documentação restringe o plano a uso
+não-comercial e pessoal, e lista violação de política entre os motivos para
+pausar uma conta. Este projeto é comercial.
+
+**Supabase gratuito não serve.** Não há backup nenhum — o Pro faz diário com
+retenção de 7 dias. E projetos gratuitos são pausados após uma semana sem
+atividade.
+
+| | |
+|---|---|
+| Vercel Pro | US$ 20 |
+| Supabase Pro (produção) | US$ 25 |
+| Supabase gratuito (desenvolvimento) | — |
+| **Total** | **US$ 45/mês** |
+
+**O Pro da Vercel elimina o cron-job.org.** O Hobby limita cron a uma execução
+diária — foi por isso que fomos ao serviço externo. O Pro permite de minuto em
+minuto, sem custo além das invocações de função. E **não exige mudança de
+código**: a Vercel envia `Authorization: Bearer $CRON_SECRET` automaticamente
+quando a variável existe, que é exatamente a checagem já presente nas três
+rotas. Bastaria declarar os agendamentos em `vercel.json`.
+
+**Gmail continua gratuito.** O limite que morde é envio, cerca de 500
+destinatários/dia numa conta comum — folgado para o volume. Duas melhorias
+opcionais: Google Workspace daria remetente em domínio próprio e 2.000/dia; e
+a API do Gmail não informa entrega nem rejeição, o que só incomoda com volume.
